@@ -11,7 +11,9 @@
 | POST | `/auth/login` | 登录（subject + password；失败限流 5 次/15 分钟） |
 | POST | `/auth/refresh` | 刷新令牌：每次轮换，旧令牌立即失效；重放即吊销整条会话链 |
 | POST | `/auth/logout` | 登出：吊销当前会话链的刷新令牌 |
+| POST | `/auth/revoke-all` | 吊销全部会话（全端下线；需 `auth:manage` scope） |
 | GET | `/auth/me` | 当前主体（subject / role / scopes） |
+| GET | `/auth/scopes` | scope 白名单自省（角色 → scope 完整映射） |
 
 ## 关键约定（详见 docs/adr/0002-auth-model.md）
 

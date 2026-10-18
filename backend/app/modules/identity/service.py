@@ -76,10 +76,18 @@ class AuthService:
         user = await self._repo.get_user(subject)
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
             await self._limiter.incr(key, LOGIN_FAILURE_WINDOW_SECONDS)
+            await self._repo.add_event(
+                subject=subject, session_id=None, event_type="login_failure", detail={"ip": ip}
+            )
+            await self._repo.commit()
             raise UnauthorizedError("主体或密码错误")
 
         await self._limiter.reset(key)
-        pair = await self._issue(user.subject, user.role, session_id=uuid.uuid4().hex)
+        session_id = uuid.uuid4().hex
+        pair = await self._issue(user.subject, user.role, session_id=session_id)
+        await self._repo.add_event(
+            subject=user.subject, session_id=session_id, event_type="login_success", detail={"ip": ip}
+        )
         await self._repo.commit()
         return pair
 
@@ -99,6 +107,12 @@ class AuthService:
         if record.revoked_at is not None:
             # 旧令牌重放 → 按盗窃推定，吊销整条会话链（含最新令牌）
             await self._repo.revoke_session(record.session_id, subject=record.subject)
+            await self._repo.add_event(
+                subject=record.subject,
+                session_id=record.session_id,
+                event_type="replay_detected",
+                detail=None,
+            )
             await self._repo.commit()
             raise UnauthorizedError("刷新令牌已被使用（疑似重放），该会话的全部令牌已吊销")
 
@@ -113,6 +127,12 @@ class AuthService:
         await self._repo.revoke_refresh_token(
             token_hash, replaced_by=hash_refresh_token(rotated.refresh_token)
         )
+        await self._repo.add_event(
+            subject=user.subject,
+            session_id=record.session_id,
+            event_type="token_refresh",
+            detail=None,
+        )
         await self._repo.commit()
         return rotated
 
@@ -121,6 +141,20 @@ class AuthService:
     async def logout(self, *, subject: str, session_id: str) -> int:
         """吊销当前会话链上的全部刷新令牌。旧 access token 在过期前仍然有效（设计取舍）。"""
         revoked = await self._repo.revoke_session(session_id, subject=subject)
+        await self._repo.add_event(
+            subject=subject, session_id=session_id, event_type="logout", detail={"revoked": revoked}
+        )
+        await self._repo.commit()
+        return revoked
+
+    # ------------------------------------------------------------- 吊销全部会话
+
+    async def revoke_all(self, *, subject: str) -> int:
+        """吊销该主体的全部会话（全端下线）。旧 access token 仍可存活至过期（≤15 min）。"""
+        revoked = await self._repo.revoke_all_sessions(subject)
+        await self._repo.add_event(
+            subject=subject, session_id=None, event_type="revoke_all", detail={"revoked": revoked}
+        )
         await self._repo.commit()
         return revoked
 

@@ -14,7 +14,7 @@ from typing import Protocol
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import RefreshToken, User
+from .models import AuthEvent, RefreshToken, User
 
 
 def hash_refresh_token(raw: str) -> str:
@@ -50,6 +50,17 @@ class AuthRepository(Protocol):
     async def revoke_refresh_token(self, token_hash: str, *, replaced_by: str | None) -> bool: ...
 
     async def revoke_session(self, session_id: str, *, subject: str | None = None) -> int: ...
+
+    async def revoke_all_sessions(self, subject: str) -> int: ...
+
+    async def add_event(
+        self,
+        *,
+        subject: str,
+        session_id: str | None,
+        event_type: str,
+        detail: dict | None = None,
+    ) -> None: ...
 
     async def commit(self) -> None: ...
 
@@ -114,6 +125,32 @@ class SqlAuthRepository:
         stmt = stmt.values(revoked_at=datetime.now(UTC))
         result = await self._session.execute(stmt)
         return int(result.rowcount or 0)
+
+    async def revoke_all_sessions(self, subject: str) -> int:
+        stmt = (
+            update(RefreshToken)
+            .where(RefreshToken.subject == subject, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(UTC))
+        )
+        result = await self._session.execute(stmt)
+        return int(result.rowcount or 0)
+
+    async def add_event(
+        self,
+        *,
+        subject: str,
+        session_id: str | None,
+        event_type: str,
+        detail: dict | None = None,
+    ) -> None:
+        self._session.add(
+            AuthEvent(
+                subject=subject,
+                session_id=session_id,
+                event_type=event_type,
+                detail=detail,
+            )
+        )
 
     async def commit(self) -> None:
         await self._session.commit()

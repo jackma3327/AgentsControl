@@ -283,6 +283,17 @@
       "422"
     ]
   },
+  "POST /api/v1/auth/revoke-all": {
+    "has_body": false,
+    "operation_id": "revoke_all_api_v1_auth_revoke_all_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "POST /api/v1/intake/items": {
     "has_body": true,
     "operation_id": "create_item_api_v1_intake_items_post",

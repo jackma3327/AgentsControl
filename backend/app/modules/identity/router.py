@@ -9,10 +9,12 @@
 - `models.py`      ORM 模型，继承 `app.core.db.Base`
 
 端点：
-- POST /auth/login    登录（subject + password，失败限流 5 次/15 分钟）
-- POST /auth/refresh  刷新令牌（每次轮换；重放即吊销整条会话链）
-- POST /auth/logout   登出（吊销当前会话链的刷新令牌）
-- GET  /auth/me       当前主体信息（role + scopes）
+- POST /auth/login       登录（subject + password，失败限流 5 次/15 分钟）
+- POST /auth/refresh     刷新令牌（每次轮换；重放即吊销整条会话链）
+- POST /auth/logout      登出（吊销当前会话链的刷新令牌）
+- POST /auth/revoke-all  吊销全部会话（需 auth:manage scope）
+- GET  /auth/me          当前主体信息（role + scopes）
+- GET  /auth/scopes      scope 白名单自省（RBAC）
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import OwnerDep
+from app.core.deps import OwnerDep, Principal, require_scope
 from app.core.errors import UnauthorizedError
 from app.core.security import TokenError, decode_token
 
@@ -118,6 +120,18 @@ async def refresh(body: RefreshRequest, request: Request, auth: AuthDep) -> Toke
 @router.post("/logout", response_model=LogoutResponse, summary="登出（吊销当前会话链）")
 async def logout(principal: OwnerDep, sid: SessionIdDep, auth: AuthDep) -> LogoutResponse:
     revoked = await auth.logout(subject=principal.subject, session_id=sid)
+    return LogoutResponse(revoked=revoked)
+
+
+@router.post(
+    "/revoke-all",
+    response_model=LogoutResponse,
+    summary="吊销全部会话（全端下线，需 auth:manage）",
+)
+async def revoke_all(
+    principal: Annotated[Principal, Depends(require_scope("auth:manage"))], auth: AuthDep
+) -> LogoutResponse:
+    revoked = await auth.revoke_all(subject=principal.subject)
     return LogoutResponse(revoked=revoked)
 
 

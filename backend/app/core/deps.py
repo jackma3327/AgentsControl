@@ -56,10 +56,12 @@ async def get_current_owner(authorization: Annotated[str | None, Header()] = Non
 OwnerDep = Annotated[Principal, Depends(get_current_owner)]
 
 
-async def require_scope(scope: str):  # noqa: ANN201 - 返回依赖函数
+def require_scope(scope: str):  # noqa: ANN201 - 返回依赖函数
     """scope 校验依赖工厂（W01-I02 接线）。
 
     用法：`Depends(require_scope("tasks:write"))`。
+    本函数必须保持 **同步**：`Depends(require_scope("x"))` 在路由定义期即调用，
+    若为 async 会把协程对象当依赖值，端点拿到的是函数而不是 Principal。
     scope 白名单的唯一权威来源是 `app/modules/identity/rbac.py`；
     返回的依赖带 `__required_scope__` 标记，`backend/scripts/audit_scopes.py`
     据此断言「每个写端点都挂了 scope」。

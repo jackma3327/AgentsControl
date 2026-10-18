@@ -50,6 +50,7 @@ class FakeRepo:
     def __init__(self, users: list[UserRecord]) -> None:
         self.users = {u.subject: u for u in users}
         self.tokens: dict[str, _TokenRow] = {}
+        self.events: list[dict[str, Any]] = []
         self.commits = 0
 
     async def get_user(self, subject: str) -> UserRecord | None:
@@ -90,6 +91,26 @@ class FakeRepo:
                 row.revoked_at = datetime.now(UTC)
                 n += 1
         return n
+
+    async def revoke_all_sessions(self, subject: str) -> int:
+        n = 0
+        for row in self.tokens.values():
+            if row.record.subject == subject and row.revoked_at is None:
+                row.revoked_at = datetime.now(UTC)
+                n += 1
+        return n
+
+    async def add_event(
+        self,
+        *,
+        subject: str,
+        session_id: str | None,
+        event_type: str,
+        detail: dict | None = None,
+    ) -> None:
+        self.events.append(
+            {"subject": subject, "session_id": session_id, "event_type": event_type, "detail": detail}
+        )
 
     async def commit(self) -> None:
         self.commits += 1
@@ -334,7 +355,7 @@ def test_scopes_endpoint_returns_mapping_and_current(h: Harness) -> None:
 
 
 async def test_require_scope_forbidden_and_allowed() -> None:
-    dep = await require_scope("tasks:write")
+    dep = require_scope("tasks:write")
     viewer = Principal(subject="u", role="viewer", scopes=scopes_for_role("viewer"))
     operator = Principal(subject="u", role="operator", scopes=scopes_for_role("operator"))
 
@@ -345,3 +366,40 @@ async def test_require_scope_forbidden_and_allowed() -> None:
 
     assert (await dep(operator)).subject == "u"
     assert dep.__required_scope__ == "tasks:write"  # 审计脚本依赖该标记
+
+
+# ------------------------------------------------------------ 吊销联动（I03）
+
+
+def test_revoke_all_kills_every_session(h: Harness) -> None:
+    s1 = _login(h)
+    s2 = _login(h)
+    r = h.client.post("/api/v1/auth/revoke-all", headers=_auth(s1["access_token"]))
+    assert r.status_code == 200
+    assert r.json()["revoked"] == 2
+
+    # 所有会话的刷新令牌全部死亡
+    for body in (s1, s2):
+        r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
+        assert r.status_code == 401
+    # 设计取舍：已签发的 access token 在过期前（≤15 min）仍然有效
+    assert h.client.get("/api/v1/auth/me", headers=_auth(s2["access_token"])).status_code == 200
+
+
+def test_revoke_all_requires_manage_scope(h: Harness) -> None:
+    viewer_scopes = list(scopes_for_role("viewer"))
+    token = create_token("v@example.com", "access", extra={"role": "viewer", "scopes": viewer_scopes})
+    r = h.client.post("/api/v1/auth/revoke-all", headers=_auth(token))
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "forbidden"
+
+
+def test_auth_events_recorded(h: Harness) -> None:
+    body = _login(h)
+    h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
+    h.client.post("/api/v1/auth/logout", headers=_auth(body["access_token"]))
+    types = [e["event_type"] for e in h.repo.events]
+    assert types == ["login_success", "token_refresh", "logout"]
+    # 失败登录也留痕
+    h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "bad"})
+    assert h.repo.events[-1]["event_type"] == "login_failure"
