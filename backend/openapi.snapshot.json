@@ -116,11 +116,13 @@
       "200"
     ]
   },
-  "GET /api/v1/goals/_ping": {
+  "GET /api/v1/goals/": {
     "has_body": false,
-    "operation_id": "module_ping_api_v1_goals__ping_get",
+    "operation_id": "list_goals_api_v1_goals__get",
     "params": [
-      "header:authorization"
+      "header:authorization",
+      "query:limit",
+      "query:status"
     ],
     "responses": [
       "200",
@@ -133,6 +135,37 @@
     "params": [],
     "responses": [
       "200"
+    ]
+  },
+  "GET /api/v1/goals/summary": {
+    "has_body": false,
+    "operation_id": "goals_summary_api_v1_goals_summary_get",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/goals/templates": {
+    "has_body": false,
+    "operation_id": "list_templates_endpoint_api_v1_goals_templates_get",
+    "params": [],
+    "responses": [
+      "200"
+    ]
+  },
+  "GET /api/v1/goals/{goal_id}": {
+    "has_body": false,
+    "operation_id": "get_goal_api_v1_goals__goal_id__get",
+    "params": [
+      "header:authorization",
+      "path:goal_id"
+    ],
+    "responses": [
+      "200",
+      "422"
     ]
   },
   "GET /api/v1/intake/_status": {
@@ -254,6 +287,18 @@
       "200"
     ]
   },
+  "PATCH /api/v1/goals/{goal_id}": {
+    "has_body": true,
+    "operation_id": "patch_goal_api_v1_goals__goal_id__patch",
+    "params": [
+      "header:authorization",
+      "path:goal_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "POST /api/v1/auth/login": {
     "has_body": true,
     "operation_id": "login_api_v1_auth_login_post",
@@ -288,6 +333,41 @@
     "operation_id": "revoke_all_api_v1_auth_revoke_all_post",
     "params": [
       "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/goals/": {
+    "has_body": true,
+    "operation_id": "create_goal_api_v1_goals__post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/goals/{goal_id}/check-stop-loss": {
+    "has_body": false,
+    "operation_id": "check_stop_loss_endpoint_api_v1_goals__goal_id__check_stop_loss_post",
+    "params": [
+      "header:authorization",
+      "path:goal_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/goals/{goal_id}/degrade": {
+    "has_body": false,
+    "operation_id": "degrade_endpoint_api_v1_goals__goal_id__degrade_post",
+    "params": [
+      "header:authorization",
+      "path:goal_id"
     ],
     "responses": [
       "200",

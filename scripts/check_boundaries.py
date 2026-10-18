@@ -144,11 +144,22 @@ def window_of(path: str, plan: dict) -> str | None:
 
 
 def check_scope(changed: list[str], plan: dict, only_window: str | None) -> None:
+    # 共享前缀：任何窗口改动都不告警
+    # （迁移目录按 w<NN>_ 前缀防冲突，单一 head 由迁移检查与 CI alembic heads 保证）
+    SHARED_PREFIXES = (
+        "docs/",
+        "plan/",
+        "scripts/",
+        ".github/",
+        ".fleet/",
+        "backend/migrations/versions/",
+        "backend/openapi.snapshot.json",
+    )
     for path in changed:
         owner = window_of(path, plan)
         if owner is None:
             # 共享基础设施（CI、docs、plan、根配置）允许任何窗口改，但要提示
-            if not path.startswith(("docs/", "plan/", "scripts/", ".github/", ".fleet/")):
+            if not path.startswith(SHARED_PREFIXES):
                 warn(f"{path} 不属于任何窗口的 allow 列表（共享文件），请确认无冲突")
             continue
         if only_window and owner != only_window:
