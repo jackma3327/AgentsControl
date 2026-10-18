@@ -30,6 +30,8 @@ _PBKDF2_ITERATIONS = 200_000
 
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
+# IP 维度（I04）：单 IP 15 分钟内登录失败 20 次即锁（跨 subject 的爆破防护）
+LOGIN_IP_FAILURE_LIMIT = 20
 
 
 def hash_password(password: str) -> str:
@@ -72,10 +74,15 @@ class AuthService:
         key = f"login:fail:subject:{subject}"
         if await self._limiter.count(key) >= LOGIN_FAILURE_LIMIT:
             raise RateLimitedError("登录失败次数过多，请 15 分钟后再试")
+        ip_key = f"login:fail:ip:{ip}" if ip else None
+        if ip_key and await self._limiter.count(ip_key) >= LOGIN_IP_FAILURE_LIMIT:
+            raise RateLimitedError("该来源登录失败次数过多，请 15 分钟后再试")
 
         user = await self._repo.get_user(subject)
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
             await self._limiter.incr(key, LOGIN_FAILURE_WINDOW_SECONDS)
+            if ip_key:
+                await self._limiter.incr(ip_key, LOGIN_FAILURE_WINDOW_SECONDS)
             await self._repo.add_event(
                 subject=subject, session_id=None, event_type="login_failure", detail={"ip": ip}
             )

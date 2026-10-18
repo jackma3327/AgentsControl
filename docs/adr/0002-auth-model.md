@@ -52,8 +52,10 @@ access token 无状态，吊销不召回。登出/吊销后，旧 access token �
 
 - 凭据：`users` 表（PBKDF2-HMAC-SHA256，200k 迭代），行由 `backend/scripts/create_user.py`
   维护，无注册端点；`OWNER_OPENIDS` 白名单在 `core.deps` 兜底（令牌主体不在白名单 → 403）；
-- **登录失败限流**：subject 维度 5 次 / 15 分钟（Redis `incr_with_ttl` 固定窗口），
-  锁定检查先于密码校验；成功登录清零；
+- **登录失败限流**：subject 维度 5 次 / 15 分钟 + IP 维度 20 次 / 15 分钟（跨主体爆破防护），
+  Redis `incr_with_ttl` 固定窗口，锁定检查先于密码校验；成功登录清零 subject 计数；
+- **/auth/* 独立请求桶**：单 IP 30 次 / 分钟（`router` 级依赖 `auth_ip_bucket`），
+  与登录失败计数互相独立（不同 key 空间），防止慢速枚举与接口滥用；
 - **限流降级**：Redis 不可达时 fail-open（放行 + 告警日志）。理由：限流是加固项，
   不是可用性前提；单用户系统宁可短暂放开限流也不能把登录打挂。若将来暴露公网多用户，改为 fail-closed。
 

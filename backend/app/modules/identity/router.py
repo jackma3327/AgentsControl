@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import OwnerDep, Principal, require_scope
-from app.core.errors import UnauthorizedError
+from app.core.errors import RateLimitedError, UnauthorizedError
 from app.core.security import TokenError, decode_token
 
 from .ratelimit import RateLimiter, RedisRateLimiter
@@ -42,7 +42,21 @@ from .schemas import (
 )
 from .service import AuthService, TokenPair
 
-router = APIRouter(prefix="/auth", tags=["identity"])
+# /auth/* 独立限流桶（I04）：单 IP 30 次/分钟，与登录失败计数（subject/IP 15min）互相独立
+AUTH_BUCKET_LIMIT = 30
+AUTH_BUCKET_WINDOW_SECONDS = 60
+
+
+async def auth_ip_bucket(
+    request: Request, limiter: Annotated[RateLimiter, Depends(get_rate_limiter)]
+) -> None:
+    ip = _client_ip(request) or "unknown"
+    count = await limiter.incr(f"auth:bucket:ip:{ip}", AUTH_BUCKET_WINDOW_SECONDS)
+    if count > AUTH_BUCKET_LIMIT:
+        raise RateLimitedError("请求过于频繁，请稍后再试")
+
+
+router = APIRouter(prefix="/auth", tags=["identity"], dependencies=[Depends(auth_ip_bucket)])
 
 
 # ------------------------------------------------------------ 依赖装配（测试可替换）

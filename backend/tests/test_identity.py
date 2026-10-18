@@ -17,14 +17,14 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.deps import Principal, require_scope
 from app.core.errors import ForbiddenError
 from app.core.security import create_token
 from app.main import create_app
 from app.modules.identity.rbac import ROLE_SCOPES, scopes_for_role
 from app.modules.identity.repository import RefreshTokenRecord, UserRecord, hash_refresh_token
-from app.modules.identity.router import get_auth_service
+from app.modules.identity.router import get_auth_service, get_rate_limiter
 from app.modules.identity.service import (
     LOGIN_FAILURE_LIMIT,
     AuthService,
@@ -153,6 +153,7 @@ def h() -> Iterator[Harness]:
     service = AuthService(repo, limiter)
     app = create_app()
     app.dependency_overrides[get_auth_service] = lambda: service
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter
     with TestClient(app) as client:
         yield Harness(client=client, repo=repo, limiter=limiter)
 
@@ -403,3 +404,48 @@ def test_auth_events_recorded(h: Harness) -> None:
     # 失败登录也留痕
     h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "bad"})
     assert h.repo.events[-1]["event_type"] == "login_failure"
+
+
+# ------------------------------------------------------------ 加固（I04）
+
+
+def test_auth_ip_bucket_rate_limits(h: Harness) -> None:
+    # /auth/* 独立请求桶：单 IP 30 次/分钟（用不触发失败计数的 /me 探测）
+    for _ in range(30):
+        r = h.client.get("/api/v1/auth/me")
+        assert r.status_code == 401
+    r = h.client.get("/api/v1/auth/me")
+    assert r.status_code == 429
+    assert r.json()["error"]["code"] == "rate_limited"
+
+
+def test_login_ip_lockout_across_subjects(h: Harness) -> None:
+    # 同一 IP 换 subject 爆破：15 分钟内失败 20 次后，新主体也 429（subject 维度还没到 5）
+    for i in range(20):
+        r = h.client.post(
+            "/api/v1/auth/login", json={"subject": f"victim-{i}@example.com", "password": "x"}
+        )
+        assert r.status_code == 401
+    r = h.client.post("/api/v1/auth/login", json={"subject": "victim-final@example.com", "password": "x"})
+    assert r.status_code == 429
+
+
+def test_prod_disables_docs_and_openapi(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient as TC
+
+    from app import main as app_main
+
+    prod = Settings(
+        app_env="prod",
+        jwt_secret="x" * 40,
+        github_webhook_secret="whsec",
+        owner_openids="owner@example.com",
+    )
+    monkeypatch.setattr(app_main, "settings", prod)
+    prod_app = app_main.create_app()
+    assert prod_app.docs_url is None
+    assert prod_app.openapi_url is None
+    with TC(prod_app) as client:
+        assert client.get("/docs").status_code == 404
+        assert client.get("/redoc").status_code == 404
+        assert client.get("/openapi.json").status_code == 404
