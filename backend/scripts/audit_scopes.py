@@ -71,8 +71,18 @@ def collect_routes(app: Any) -> list[tuple[str, APIRoute]]:
 
 def route_calls(route: APIRoute) -> set[Any]:
     calls = _walk_calls(route.dependant)
-    for d in route.dependencies:
-        calls |= _walk_calls(d.dependant)
+    for d in getattr(route, "dependencies", None) or []:
+        dep = getattr(d, "dependant", None)  # 旧版 FastAPI：Dependant 对象
+        if dep is not None:
+            calls |= _walk_calls(dep)
+            continue
+        dep_call = getattr(d, "dependency", None)  # 新版 FastAPI：Depends 对象
+        if dep_call is not None:
+            calls.add(dep_call)
+            for sub in getattr(d, "dependencies", None) or []:
+                sub_call = getattr(sub, "dependency", None) or getattr(sub, "call", None)
+                if sub_call is not None:
+                    calls.add(sub_call)
     return calls
 
 
