@@ -8,28 +8,111 @@
 - `repository.py`  数据访问，只接受/返回领域对象或行记录
 - `models.py`      ORM 模型，继承 `app.core.db.Base`
 
-本文件是骨架占位：`/_status` 返回 501 供并行开发期自检。
-窗口实现时删除 `/_status`，并按 PLAN 中的端点清单逐个落地。
+端点：
+- POST /auth/login    登录（subject + password，失败限流 5 次/15 分钟）
+- POST /auth/refresh  刷新令牌（每次轮换；重放即吊销整条会话链）
+- POST /auth/logout   登出（吊销当前会话链的刷新令牌）
+- GET  /auth/me       当前主体信息（role + scopes）
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, Header, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.db import get_db
 from app.core.deps import OwnerDep
-from app.core.errors import NotImplementedYetError
+from app.core.errors import UnauthorizedError
+from app.core.security import TokenError, decode_token
 
-MODULE = "identity"
-OWNER_WINDOW = "W01"
+from .ratelimit import RateLimiter, RedisRateLimiter
+from .repository import SqlAuthRepository
+from .schemas import LoginRequest, LogoutResponse, MeResponse, RefreshRequest, TokenPairResponse
+from .service import AuthService, TokenPair
 
 router = APIRouter(prefix="/auth", tags=["identity"])
 
 
-@router.get("/_status", summary="模块占位状态（骨架自检用）")
-async def module_status() -> dict[str, str]:
-    return {"module": MODULE, "owner_window": OWNER_WINDOW, "state": "stub"}
+# ------------------------------------------------------------ 依赖装配（测试可替换）
 
 
-@router.get("/_ping", summary="需要认证的占位端点（验证认证链路）")
-async def module_ping(_: OwnerDep) -> dict[str, str]:
-    raise NotImplementedYetError(f"模块 {MODULE} 尚未实现，owner={OWNER_WINDOW}")
+def get_rate_limiter() -> RateLimiter:
+    return RedisRateLimiter()
+
+
+def get_auth_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+) -> AuthService:
+    return AuthService(SqlAuthRepository(db), limiter)
+
+
+AuthDep = Annotated[AuthService, Depends(get_auth_service)]
+
+
+async def get_session_id(authorization: Annotated[str | None, Header()] = None) -> str:
+    """从 access token 中取出会话链标识（sid claim）。
+
+    在 core.deps.get_current_owner 之上组合（不修改冻结签名），
+    用于登出时定位要吊销的会话链。
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise UnauthorizedError("缺少 Bearer 令牌")
+    try:
+        payload = decode_token(authorization.split(" ", 1)[1].strip(), expect="access")
+    except TokenError as exc:
+        raise UnauthorizedError("令牌无效或已过期") from exc
+    sid = str(payload.get("sid") or "")
+    if not sid:
+        raise UnauthorizedError("令牌缺少会话标识，无法定位要登出的会话")
+    return sid
+
+
+SessionIdDep = Annotated[str, Depends(get_session_id)]
+
+
+def _client_ip(request: Request) -> str | None:
+    # 部署在 Caddy 之后；可信代理下取 X-Forwarded-For 首段（ADR 0002 记录信任假设）
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+def _pair_response(pair: TokenPair) -> TokenPairResponse:
+    return TokenPairResponse(
+        access_token=pair.access_token,
+        refresh_token=pair.refresh_token,
+        expires_in=pair.expires_in,
+        subject=pair.subject,
+        role=pair.role,
+        scopes=list(pair.scopes),
+    )
+
+
+# ------------------------------------------------------------ 端点
+
+
+@router.post("/login", response_model=TokenPairResponse, summary="登录（签发令牌对）")
+async def login(body: LoginRequest, request: Request, auth: AuthDep) -> TokenPairResponse:
+    pair = await auth.login(subject=body.subject, password=body.password, ip=_client_ip(request))
+    return _pair_response(pair)
+
+
+@router.post("/refresh", response_model=TokenPairResponse, summary="刷新令牌（轮换 + 防重放）")
+async def refresh(body: RefreshRequest, request: Request, auth: AuthDep) -> TokenPairResponse:
+    pair = await auth.refresh(refresh_token=body.refresh_token, ip=_client_ip(request))
+    return _pair_response(pair)
+
+
+@router.post("/logout", response_model=LogoutResponse, summary="登出（吊销当前会话链）")
+async def logout(principal: OwnerDep, sid: SessionIdDep, auth: AuthDep) -> LogoutResponse:
+    revoked = await auth.logout(subject=principal.subject, session_id=sid)
+    return LogoutResponse(revoked=revoked)
+
+
+@router.get("/me", response_model=MeResponse, summary="当前主体信息")
+async def me(principal: OwnerDep) -> MeResponse:
+    return MeResponse(subject=principal.subject, role=principal.role, scopes=list(principal.scopes))

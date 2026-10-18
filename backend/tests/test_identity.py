@@ -1,9 +1,300 @@
-"""占位测试文件：归属窗口见 plan/windows.yaml。
+"""W01 identity 单测：登录、令牌轮换、重放、限流、白名单。
 
-保留此文件是为了让"目录所有权"在骨架阶段就可被脚本校验（边界检查要求
-allow 路径存在）。该窗口的第一个 issue 落地时，用真实测试替换本文件全文。
+设计说明：
+- CI 的 backend job 没有 PG/Redis 服务，因此 service 依赖通过
+  `dependency_overrides` 替换为内存实现（FakeRepo / FakeLimiter），
+  只测业务逻辑，不测 SQL 方言（迁移由 CI migrations job 覆盖）；
+- 涉及全局配置（白名单）的用例用 monkeypatch 就地改 settings 单例并自动还原。
 """
 
-import pytest
+from __future__ import annotations
 
-pytestmark = pytest.mark.skip(reason="占位：待对应窗口实现")
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.core.config import settings
+from app.core.security import create_token
+from app.main import create_app
+from app.modules.identity.repository import RefreshTokenRecord, UserRecord, hash_refresh_token
+from app.modules.identity.router import get_auth_service
+from app.modules.identity.service import (
+    LOGIN_FAILURE_LIMIT,
+    AuthService,
+    hash_password,
+    verify_password,
+)
+
+OWNER = "owner@example.com"
+PASSWORD = "correct-password-1"
+
+
+# ------------------------------------------------------------ 内存替身
+
+
+@dataclass
+class _TokenRow:
+    record: RefreshTokenRecord
+    revoked_at: datetime | None = None
+    replaced_by: str | None = None
+
+
+class FakeRepo:
+    def __init__(self, users: list[UserRecord]) -> None:
+        self.users = {u.subject: u for u in users}
+        self.tokens: dict[str, _TokenRow] = {}
+        self.commits = 0
+
+    async def get_user(self, subject: str) -> UserRecord | None:
+        return self.users.get(subject)
+
+    async def add_refresh_token(self, record: RefreshTokenRecord) -> None:
+        self.tokens[record.token_hash] = _TokenRow(record=record)
+
+    async def get_refresh_token(self, token_hash: str) -> RefreshTokenRecord | None:
+        row = self.tokens.get(token_hash)
+        if row is None:
+            return None
+        return RefreshTokenRecord(
+            subject=row.record.subject,
+            session_id=row.record.session_id,
+            token_hash=row.record.token_hash,
+            expires_at=row.record.expires_at,
+            revoked_at=row.revoked_at,
+            replaced_by=row.replaced_by,
+        )
+
+    async def revoke_refresh_token(self, token_hash: str, *, replaced_by: str | None) -> bool:
+        row = self.tokens.get(token_hash)
+        if row is None or row.revoked_at is not None:
+            return False
+        row.revoked_at = datetime.now(UTC)
+        row.replaced_by = replaced_by
+        return True
+
+    async def revoke_session(self, session_id: str, *, subject: str | None = None) -> int:
+        n = 0
+        for row in self.tokens.values():
+            if row.record.session_id != session_id:
+                continue
+            if subject is not None and row.record.subject != subject:
+                continue
+            if row.revoked_at is None:
+                row.revoked_at = datetime.now(UTC)
+                n += 1
+        return n
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    def session_of(self, refresh_token: str) -> str:
+        return self.tokens[hash_refresh_token(refresh_token)].record.session_id
+
+
+@dataclass
+class FakeLimiter:
+    counts: dict[str, tuple[int, datetime]] = field(default_factory=dict)
+
+    async def count(self, key: str) -> int:
+        entry = self.counts.get(key)
+        if entry is None:
+            return 0
+        n, expires_at = entry
+        return n if expires_at > datetime.now(UTC) else 0
+
+    async def incr(self, key: str, window_seconds: int) -> int:
+        n = await self.count(key) + 1
+        self.counts[key] = (n, datetime.now(UTC) + timedelta(seconds=window_seconds))
+        return n
+
+    async def reset(self, key: str) -> None:
+        self.counts.pop(key, None)
+
+
+@dataclass
+class Harness:
+    client: TestClient
+    repo: FakeRepo
+    limiter: FakeLimiter
+
+
+@pytest.fixture()
+def h() -> Iterator[Harness]:
+    repo = FakeRepo([UserRecord(OWNER, hash_password(PASSWORD), "owner", True)])
+    limiter = FakeLimiter()
+    service = AuthService(repo, limiter)
+    app = create_app()
+    app.dependency_overrides[get_auth_service] = lambda: service
+    with TestClient(app) as client:
+        yield Harness(client=client, repo=repo, limiter=limiter)
+
+
+def _login(h: Harness, subject: str = OWNER, password: str = PASSWORD) -> dict[str, Any]:
+    r = h.client.post("/api/v1/auth/login", json={"subject": subject, "password": password})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+# ------------------------------------------------------------ 密码原语
+
+
+def test_password_hash_roundtrip() -> None:
+    stored = hash_password(PASSWORD)
+    assert stored != PASSWORD
+    assert verify_password(PASSWORD, stored)
+    assert not verify_password("wrong", stored)
+    assert not verify_password(PASSWORD, "not-a-valid-format")
+
+
+# ------------------------------------------------------------ 登录
+
+
+def test_login_returns_pair_and_me(h: Harness) -> None:
+    body = _login(h)
+    assert body["token_type"] == "bearer"
+    assert body["expires_in"] == 900  # 15 min（settings 默认）
+    assert body["role"] == "owner"
+    assert "auth:manage" in body["scopes"]
+
+    me = h.client.get("/api/v1/auth/me", headers=_auth(body["access_token"]))
+    assert me.status_code == 200
+    data = me.json()
+    assert data["subject"] == OWNER
+    assert data["role"] == "owner"
+    assert "tasks:write" in data["scopes"]
+
+
+def test_login_wrong_password_rejected(h: Harness) -> None:
+    r = h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "nope"})
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "unauthorized"
+
+
+def test_login_unknown_subject_rejected(h: Harness) -> None:
+    r = h.client.post("/api/v1/auth/login", json={"subject": "ghost", "password": PASSWORD})
+    assert r.status_code == 401
+
+
+def test_login_locked_after_5_failures(h: Harness) -> None:
+    for _ in range(LOGIN_FAILURE_LIMIT):
+        r = h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "bad"})
+        assert r.status_code == 401
+    # 第 6 次：即使密码正确也 429（锁定检查先于密码校验）
+    r = h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": PASSWORD})
+    assert r.status_code == 429
+    assert r.json()["error"]["code"] == "rate_limited"
+
+
+def test_login_success_resets_failure_counter(h: Harness) -> None:
+    for _ in range(LOGIN_FAILURE_LIMIT - 1):
+        h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "bad"})
+    _login(h)  # 成功登录清零
+    for _ in range(LOGIN_FAILURE_LIMIT - 1):
+        h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "bad"})
+    # 仍是 401 而非 429：计数被成功登录重置过
+    r = h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "bad"})
+    assert r.status_code == 401
+
+
+# ------------------------------------------------------------ 刷新轮换与重放
+
+
+def test_refresh_rotates_old_token_becomes_invalid(h: Harness) -> None:
+    first = _login(h)
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert r.status_code == 200, r.text
+    second = r.json()
+    assert second["refresh_token"] != first["refresh_token"]
+    assert second["access_token"] != first["access_token"]
+    # 同一条会话链
+    assert h.repo.session_of(second["refresh_token"]) == h.repo.session_of(first["refresh_token"])
+
+    # 旧 refresh token 立即失效
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert r.status_code == 401
+
+
+def test_refresh_replay_revokes_entire_chain(h: Harness) -> None:
+    first = _login(h)
+    second = h.client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}
+    ).json()
+    # 重放已轮换的旧令牌 → 401，且整条链（含最新令牌）被吊销
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert r.status_code == 401
+    assert "重放" in r.json()["error"]["message"]
+
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": second["refresh_token"]})
+    assert r.status_code == 401
+
+
+def test_expired_refresh_token_rejected(h: Harness) -> None:
+    body = _login(h)
+    expired = create_token(OWNER, "refresh", ttl_seconds=-10, extra={"sid": "whatever"})
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": expired})
+    assert r.status_code == 401
+    # 正常令牌不受影响
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
+    assert r.status_code == 200
+
+
+def test_refresh_unknown_token_rejected(h: Harness) -> None:
+    _login(h)  # 让系统有至少一条会话
+    forged = create_token(OWNER, "refresh", extra={"sid": "fake"})  # 签名合法但未入库
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": forged})
+    assert r.status_code == 401
+
+
+def test_refresh_access_token_rejected(h: Harness) -> None:
+    body = _login(h)
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["access_token"]})
+    assert r.status_code == 401
+
+
+# ------------------------------------------------------------ 白名单
+
+
+def test_subject_outside_whitelist_forbidden(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "owner_openids", "someone-else@example.com")
+    token = create_token(OWNER, "access", extra={"role": "owner", "scopes": []})
+    r = h.client.get("/api/v1/auth/me", headers=_auth(token))
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "forbidden"
+
+
+# ------------------------------------------------------------ 登出
+
+
+def test_logout_revokes_session_chain(h: Harness) -> None:
+    body = _login(h)
+    r = h.client.post("/api/v1/auth/logout", headers=_auth(body["access_token"]))
+    assert r.status_code == 200
+    assert r.json()["revoked"] == 1
+
+    # 刷新令牌已死
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
+    assert r.status_code == 401
+
+    # 设计取舍：旧 access token 在过期前（≤15 min）仍然有效
+    me = h.client.get("/api/v1/auth/me", headers=_auth(body["access_token"]))
+    assert me.status_code == 200
+
+
+def test_logout_requires_sid_claim(h: Harness) -> None:
+    token = create_token(OWNER, "access", extra={"role": "owner"})
+    r = h.client.post("/api/v1/auth/logout", headers=_auth(token))
+    assert r.status_code == 401
+
+
+def test_me_requires_auth(h: Harness) -> None:
+    r = h.client.get("/api/v1/auth/me")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "unauthorized"

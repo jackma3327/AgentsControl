@@ -18,9 +18,8 @@ from app.core.config import Settings
 from app.core.security import create_token
 from app.main import create_app
 
-# (模块包名, 路由前缀)：identity 的前缀是 /auth，其余与包名一致
+# (模块包名, 路由前缀)：identity（W01）已实现，占位端点已移除，单独断言
 MODULES = [
-    ("identity", "auth"),
     ("intake", "intake"),
     ("goals", "goals"),
     ("tasks", "tasks"),
@@ -53,6 +52,11 @@ def test_all_modules_registered(client: TestClient) -> None:
     paths = client.get("/openapi.json").json()["paths"]
     for module, prefix in MODULES:
         assert f"/api/v1/{prefix}/_status" in paths, f"模块 {module} 未注册"
+    # identity（W01）已实现：占位端点移除，真实端点就位
+    for endpoint in ("/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/auth/me"):
+        assert endpoint in paths, f"identity 端点缺失 {endpoint}"
+    assert "/api/v1/auth/_status" not in paths
+    assert "/api/v1/auth/_ping" not in paths
 
 
 def test_module_status_is_stub(client: TestClient) -> None:
