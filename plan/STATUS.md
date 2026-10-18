@@ -1,21 +1,21 @@
 # 窗口进度（自动生成）
 
-> 生成时间：2026-10-18 22:44　请勿手工编辑，运行 `./scripts/window-status.sh --write` 重建。
+> 生成时间：2026-10-18 23:54　请勿手工编辑，运行 `./scripts/window-status.sh --write` 重建。
 
 ### W01 · 身份、权限与工程内核
 
 - 分支：`win/w01-identity-kernel`　worktree：`.worktrees/w01-identity-kernel`　**未创建**
-- PR：无 PR
+- PR：PR #1 (Draft, checks: —)
 
 | Issue | 标题 | Wave | 状态 | 最近提交 |
 |---|---|---|---|---|
-| W01-I01 | 登录与令牌轮换 | 1 | TODO | `—` |
-| W01-I02 | RBAC 与 scope 校验 | 2 | TODO | `—` |
-| W01-I03 | 会话与设备吊销联动 | 3 | TODO | `—` |
-| W01-I04 | 速率限制与安全响应头加固 | 3 | TODO | `—` |
-| W01-I05 | 工程内核补齐（错误码表与 OpenAPI 快照） | 4 | TODO | `—` |
+| W01-I01 | 登录与令牌轮换 | 1 | DONE | `5da7b04` |
+| W01-I02 | RBAC 与 scope 校验 | 2 | DONE | `fa710f7` |
+| W01-I03 | 会话与设备吊销联动 | 3 | DONE | `e9ec3ae` |
+| W01-I04 | 速率限制与安全响应头加固 | 3 | DONE | `f759cf4` |
+| W01-I05 | 工程内核补齐（错误码表与 OpenAPI 快照） | 4 | DONE | `5a9c1ff` |
 
-**进度 0/5（0%）**
+**进度 5/5（100%）**
 
 ### W02 · 收件箱与双轨目标
 
@@ -24,14 +24,14 @@
 
 | Issue | 标题 | Wave | 状态 | 最近提交 |
 |---|---|---|---|---|
-| W02-I01 | Inbox 捕获 | 1 | TODO | `—` |
-| W02-I02 | AI 三问结构化 | 2 | TODO | `—` |
-| W02-I03 | 目标卡（双轨） | 2 | TODO | `—` |
-| W02-I04 | 模板库与止损判定 | 3 | TODO | `—` |
-| W02-I05 | 兴趣池与自动归档 | 3 | TODO | `—` |
-| W02-I06 | 目标看板聚合接口 | 4 | TODO | `—` |
+| W02-I01 | Inbox 捕获 | 1 | DONE | `6fb92d3` |
+| W02-I02 | AI 三问结构化 | 2 | DONE | `f3e4d6d` |
+| W02-I03 | 目标卡（双轨） | 2 | DONE | `6690782` |
+| W02-I04 | 模板库与止损判定 | 3 | DONE | `32df103` |
+| W02-I05 | 兴趣池与自动归档 | 3 | DONE | `539d345` |
+| W02-I06 | 目标看板聚合接口 | 4 | DONE | `815bbe2` |
 
-**进度 0/6（0%）**
+**进度 6/6（100%）**
 
 ### W03 · 任务队列与租约
 
@@ -100,7 +100,7 @@
 ### W07 · 账本、闸门与带宽熔断
 
 - 分支：`win/w07-ledger-approvals`　worktree：`.worktrees/w07-ledger-approvals`　**未创建**
-- PR：无 PR
+- PR：PR #2 (Draft, checks: —)
 
 | Issue | 标题 | Wave | 状态 | 最近提交 |
 |---|---|---|---|---|
