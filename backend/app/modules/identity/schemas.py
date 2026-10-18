@@ -30,5 +30,10 @@ class MeResponse(BaseModel):
     scopes: list[str]
 
 
+class ScopesResponse(BaseModel):
+    current: MeResponse
+    roles: dict[str, list[str]] = Field(description="角色 → scope 白名单（唯一权威：rbac.py）")
+
+
 class LogoutResponse(BaseModel):
     revoked: int = Field(description="本次吊销的刷新令牌数")

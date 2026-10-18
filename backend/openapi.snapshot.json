@@ -29,6 +29,17 @@
       "422"
     ]
   },
+  "GET /api/v1/auth/scopes": {
+    "has_body": false,
+    "operation_id": "scopes_api_v1_auth_scopes_get",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/devices/_ping": {
     "has_body": false,
     "operation_id": "module_ping_api_v1_devices__ping_get",
@@ -124,23 +135,61 @@
       "200"
     ]
   },
-  "GET /api/v1/intake/_ping": {
-    "has_body": false,
-    "operation_id": "module_ping_api_v1_intake__ping_get",
-    "params": [
-      "header:authorization"
-    ],
-    "responses": [
-      "200",
-      "422"
-    ]
-  },
   "GET /api/v1/intake/_status": {
     "has_body": false,
     "operation_id": "module_status_api_v1_intake__status_get",
     "params": [],
     "responses": [
       "200"
+    ]
+  },
+  "GET /api/v1/intake/interests": {
+    "has_body": false,
+    "operation_id": "list_interests_api_v1_intake_interests_get",
+    "params": [
+      "header:authorization",
+      "query:limit"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/intake/items": {
+    "has_body": false,
+    "operation_id": "list_items_api_v1_intake_items_get",
+    "params": [
+      "header:authorization",
+      "query:cursor",
+      "query:limit"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/intake/items/{item_id}": {
+    "has_body": false,
+    "operation_id": "get_item_api_v1_intake_items__item_id__get",
+    "params": [
+      "header:authorization",
+      "path:item_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/intake/items/{item_id}/questions": {
+    "has_body": false,
+    "operation_id": "get_questions_api_v1_intake_items__item_id__questions_get",
+    "params": [
+      "header:authorization",
+      "path:item_id"
+    ],
+    "responses": [
+      "200",
+      "422"
     ]
   },
   "GET /api/v1/ledger/_ping": {
@@ -229,6 +278,29 @@
     "has_body": true,
     "operation_id": "refresh_api_v1_auth_refresh_post",
     "params": [],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/intake/items": {
+    "has_body": true,
+    "operation_id": "create_item_api_v1_intake_items_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/intake/items/{item_id}/structure": {
+    "has_body": true,
+    "operation_id": "structure_item_api_v1_intake_items__item_id__structure_post",
+    "params": [
+      "header:authorization",
+      "path:item_id"
+    ],
     "responses": [
       "200",
       "422"

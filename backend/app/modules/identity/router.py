@@ -28,8 +28,16 @@ from app.core.errors import UnauthorizedError
 from app.core.security import TokenError, decode_token
 
 from .ratelimit import RateLimiter, RedisRateLimiter
+from .rbac import ROLE_SCOPES
 from .repository import SqlAuthRepository
-from .schemas import LoginRequest, LogoutResponse, MeResponse, RefreshRequest, TokenPairResponse
+from .schemas import (
+    LoginRequest,
+    LogoutResponse,
+    MeResponse,
+    RefreshRequest,
+    ScopesResponse,
+    TokenPairResponse,
+)
 from .service import AuthService, TokenPair
 
 router = APIRouter(prefix="/auth", tags=["identity"])
@@ -116,3 +124,13 @@ async def logout(principal: OwnerDep, sid: SessionIdDep, auth: AuthDep) -> Logou
 @router.get("/me", response_model=MeResponse, summary="当前主体信息")
 async def me(principal: OwnerDep) -> MeResponse:
     return MeResponse(subject=principal.subject, role=principal.role, scopes=list(principal.scopes))
+
+
+@router.get("/scopes", response_model=ScopesResponse, summary="scope 白名单自省（RBAC）")
+async def scopes(principal: OwnerDep) -> ScopesResponse:
+    return ScopesResponse(
+        current=MeResponse(
+            subject=principal.subject, role=principal.role, scopes=list(principal.scopes)
+        ),
+        roles={role: sorted(s) for role, s in sorted(ROLE_SCOPES.items())},
+    )

@@ -18,8 +18,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
+from app.core.deps import Principal, require_scope
+from app.core.errors import ForbiddenError
 from app.core.security import create_token
 from app.main import create_app
+from app.modules.identity.rbac import ROLE_SCOPES, scopes_for_role
 from app.modules.identity.repository import RefreshTokenRecord, UserRecord, hash_refresh_token
 from app.modules.identity.router import get_auth_service
 from app.modules.identity.service import (
@@ -298,3 +301,47 @@ def test_me_requires_auth(h: Harness) -> None:
     r = h.client.get("/api/v1/auth/me")
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "unauthorized"
+
+
+# ------------------------------------------------------------ RBAC（I02）
+
+
+def test_rbac_role_scopes_mapping() -> None:
+    owner = set(scopes_for_role("owner"))
+    operator = set(scopes_for_role("operator"))
+    viewer = set(scopes_for_role("viewer"))
+
+    assert "auth:manage" in owner
+    assert "auth:manage" not in operator  # 会话管理仅 owner
+    assert "tasks:write" in operator
+    assert "tasks:write" not in viewer  # viewer 只读
+    assert "tasks:read" in viewer
+    # 子集关系：viewer ⊆ operator ⊆ owner
+    assert viewer < operator < owner
+    # 未知角色降级为最低权限
+    assert set(scopes_for_role("ghost")) == viewer
+
+
+def test_scopes_endpoint_returns_mapping_and_current(h: Harness) -> None:
+    body = _login(h)
+    r = h.client.get("/api/v1/auth/scopes", headers=_auth(body["access_token"]))
+    assert r.status_code == 200
+    data = r.json()
+    assert set(data["roles"]) == {"owner", "operator", "viewer"}
+    assert data["roles"]["operator"] == sorted(ROLE_SCOPES["operator"])
+    assert data["current"]["subject"] == OWNER
+    assert data["current"]["role"] == "owner"
+
+
+async def test_require_scope_forbidden_and_allowed() -> None:
+    dep = await require_scope("tasks:write")
+    viewer = Principal(subject="u", role="viewer", scopes=scopes_for_role("viewer"))
+    operator = Principal(subject="u", role="operator", scopes=scopes_for_role("operator"))
+
+    with pytest.raises(ForbiddenError) as exc:
+        await dep(viewer)
+    assert exc.value.code == "forbidden"  # 越权必须 403 + error.code=forbidden
+    assert "tasks:write" in exc.value.message
+
+    assert (await dep(operator)).subject == "u"
+    assert dep.__required_scope__ == "tasks:write"  # 审计脚本依赖该标记
