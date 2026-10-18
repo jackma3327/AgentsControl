@@ -90,10 +90,14 @@ fi
 
 # ---------------------------------------------------------------- 4. 迁移单头
 if [[ -d backend/migrations/versions ]]; then
-  HEADS=$(grep -rhoE "^revision: str = ['\"][^'\"]+" backend/migrations/versions/*.py 2>/dev/null | sed "s/.*['\"]//" | sort -u | wc -l | tr -d ' ')
-  DOWNS=$(grep -rhoE "^down_revision: str \| None = ['\"][^'\"]+" backend/migrations/versions/*.py 2>/dev/null | sed "s/.*['\"]//" | sort -u | wc -l | tr -d ' ')
-  if [[ "$HEADS" -gt 0 && "$DOWNS" -ge "$HEADS" ]]; then
-    report E "迁移可能出现多头（revision=$HEADS, down_revision=$DOWNS），请跑 alembic heads 确认"
+  # heads = 全部 revision − 已被 down_revision 引用的节点（含 merge 节点的元组引用）。
+  # 旧启发式（比较引用计数）在存在 merge revision 时会误报，已改为集合差（W01-I05）。
+  REVS=$(grep -rhoE "^revision: str = ['\"][^'\"]+" backend/migrations/versions/*.py 2>/dev/null | sed "s/.*['\"]//" | sort -u)
+  REFS=$(grep -rhoE "^down_revision:.*" backend/migrations/versions/*.py 2>/dev/null | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\"" | sort -u)
+  HEADS_LIST=$(comm -23 <(printf '%s\n' "$REVS" | sed '/^$/d') <(printf '%s\n' "$REFS" | sed '/^$/d'))
+  HEADS=$(printf '%s' "$HEADS_LIST" | grep -c . || true)
+  if [[ "$HEADS" -gt 1 ]]; then
+    report E "迁移出现多头（$HEADS 个: $(printf '%s' "$HEADS_LIST" | tr '\n' ' ')），请用 alembic merge 合并"
   fi
   for f in backend/migrations/versions/*.py; do
     [[ -f "$f" ]] || continue

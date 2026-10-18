@@ -190,6 +190,11 @@ jobs:
           git fetch origin "${{ github.base_ref || 'main' }}" --depth=1
           python scripts/check_boundaries.py --changed --base "$base"
       - name: 冲突标记与本地卫生
+        env:
+          # 与上一步 Window boundaries 保持一致：冻结文件检查需要看到 PR 的实际 label
+          # （否则任何改 backend/app/core/** 的 PR 都会在这里误报缺 label）。
+          # 变更记录：W01-I05 补齐，未放松任何检查。
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: bash scripts/pr_precheck.sh --local || [ $? -eq 2 ]
       - name: OpenAPI 契约快照
         run: |
