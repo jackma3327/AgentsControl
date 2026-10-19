@@ -171,6 +171,29 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
           NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
 
+  e2e:
+    name: web · e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: 安装依赖
+        run: npm install --no-audit --no-fund
+      - name: 安装 Chromium（只装 chromium，控制时长）
+        run: npx playwright install --with-deps chromium
+      - name: 构建
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+      - name: E2E 冒烟（全部 API 走 route mock，不依赖后端）
+        run: npm run test:e2e
+
   plan:
     name: plan · 边界与契约
     runs-on: ubuntu-latest
@@ -231,7 +254,7 @@ jobs:
   gate:
     name: gate
     runs-on: ubuntu-latest
-    needs: [backend, migrations, agent, web, plan, secrets]
+    needs: [backend, migrations, agent, web, e2e, plan, secrets]
     if: always()
     steps:
       - name: 聚合结果
@@ -241,6 +264,7 @@ jobs:
           echo "migrations=${{ needs.migrations.result }}"
           echo "agent=${{ needs.agent.result }}"
           echo "web=${{ needs.web.result }}"
+          echo "e2e=${{ needs.e2e.result }}"
           echo "plan=${{ needs.plan.result }}"
           echo "secrets=${{ needs.secrets.result }}"
           if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
@@ -262,6 +286,7 @@ jobs:
           R_MIGRATIONS: ${{ needs.migrations.result }}
           R_AGENT: ${{ needs.agent.result }}
           R_WEB: ${{ needs.web.result }}
+          R_E2E: ${{ needs.e2e.result }}
           R_PLAN: ${{ needs.plan.result }}
           R_SECRETS: ${{ needs.secrets.result }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -277,6 +302,7 @@ jobs:
             "| backend · migrations | $R_MIGRATIONS |" \
             "| agent · go vet + test | $R_AGENT |" \
             "| web · typecheck + build | $R_WEB |" \
+            "| web · e2e | $R_E2E |" \
             "| plan · 边界与契约 | $R_PLAN |" \
             "| repo · secret scan | $R_SECRETS |" \
             '' \
