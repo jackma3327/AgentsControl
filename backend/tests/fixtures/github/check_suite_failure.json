@@ -1,0 +1,8 @@
+{
+  "action": "completed",
+  "check_suite": {
+    "conclusion": "failure",
+    "head_branch": "win/w03-task-queue",
+    "pull_requests": [{ "number": 42 }]
+  }
+}

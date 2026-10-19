@@ -20,6 +20,8 @@ concurrency:
 
 permissions:
   contents: read
+  # gate 需要把结果回写到 PR 评论（fork PR 只读，故该步骤允许失败）
+  pull-requests: write
 
 env:
   PYTHON_VERSION: "3.12"
@@ -233,6 +235,7 @@ jobs:
     if: always()
     steps:
       - name: 聚合结果
+        id: verdict
         run: |
           echo "backend=${{ needs.backend.result }}"
           echo "migrations=${{ needs.migrations.result }}"
@@ -245,3 +248,45 @@ jobs:
             exit 1
           fi
           echo "全部门禁通过"
+
+      - name: 结果回写 PR（覆盖更新同一条评论）
+        # 目的：评审时只看一条评论就知道六个 job 的状态，不用翻 Actions 页面。
+        # fork PR 的 token 是只读的，写评论会 403，因此该步骤失败不影响 gate。
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          R_BACKEND: ${{ needs.backend.result }}
+          R_MIGRATIONS: ${{ needs.migrations.result }}
+          R_AGENT: ${{ needs.agent.result }}
+          R_WEB: ${{ needs.web.result }}
+          R_PLAN: ${{ needs.plan.result }}
+          R_SECRETS: ${{ needs.secrets.result }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          SHORT=${HEAD_SHA:0:7}
+          body=$(printf '%s\n' \
+            '<!-- afc-ci-summary -->' \
+            "### CI 门禁 · $SHORT" \
+            '' \
+            '| job | 结果 |' \
+            '|---|---|' \
+            "| backend · lint + unit | $R_BACKEND |" \
+            "| backend · migrations | $R_MIGRATIONS |" \
+            "| agent · go vet + test | $R_AGENT |" \
+            "| web · typecheck + build | $R_WEB |" \
+            "| plan · 边界与契约 | $R_PLAN |" \
+            "| repo · secret scan | $R_SECRETS |" \
+            '' \
+            '合并准入：本表全绿 + docs/MERGE-REVIEW-v1.md 的 12 条。')
+          comment_id=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            -q '.[] | select(.body | contains("<!-- afc-ci-summary -->")) | .id' | head -1)
+          if [ -n "$comment_id" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${comment_id}" -f body="$body" >/dev/null
+            echo "已更新评论 $comment_id"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
+            echo "已新建评论"
+          fi

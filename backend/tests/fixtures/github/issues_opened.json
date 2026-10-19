@@ -1,0 +1,11 @@
+{
+  "action": "opened",
+  "issue": {
+    "number": 12,
+    "title": "[W10] 前端控制台",
+    "state": "open",
+    "labels": [{ "name": "window:W10" }, { "name": "priority/p0" }],
+    "html_url": "https://github.com/jackma3327/AgentsControl/issues/12",
+    "user": { "login": "jackma3327" }
+  }
+}

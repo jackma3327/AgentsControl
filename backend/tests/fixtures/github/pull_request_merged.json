@@ -1,0 +1,16 @@
+{
+  "action": "closed",
+  "number": 42,
+  "pull_request": {
+    "number": 42,
+    "title": "[W03] 任务队列与租约",
+    "body": "实现租约回收。\n\nCloses #8\nfixes #9",
+    "state": "closed",
+    "merged": true,
+    "merged_at": "2026-10-19T02:35:02Z",
+    "html_url": "https://github.com/jackma3327/AgentsControl/pull/42",
+    "user": { "login": "jackma3327" },
+    "head": { "ref": "win/w03-task-queue" },
+    "base": { "ref": "main" }
+  }
+}

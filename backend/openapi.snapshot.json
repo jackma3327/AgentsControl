@@ -231,23 +231,64 @@
       "200"
     ]
   },
-  "GET /api/v1/github/_ping": {
-    "has_body": false,
-    "operation_id": "module_ping_api_v1_github__ping_get",
-    "params": [
-      "header:authorization"
-    ],
-    "responses": [
-      "200",
-      "422"
-    ]
-  },
   "GET /api/v1/github/_status": {
     "has_body": false,
     "operation_id": "module_status_api_v1_github__status_get",
     "params": [],
     "responses": [
       "200"
+    ]
+  },
+  "GET /api/v1/github/events": {
+    "has_body": false,
+    "operation_id": "list_events_api_v1_github_events_get",
+    "params": [
+      "header:authorization",
+      "query:limit",
+      "query:status"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/github/issues": {
+    "has_body": false,
+    "operation_id": "list_issues_api_v1_github_issues_get",
+    "params": [
+      "header:authorization",
+      "query:limit",
+      "query:state"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/github/pulls": {
+    "has_body": false,
+    "operation_id": "list_pulls_api_v1_github_pulls_get",
+    "params": [
+      "header:authorization",
+      "query:limit",
+      "query:state",
+      "query:verdict"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/github/pulls/{number}": {
+    "has_body": false,
+    "operation_id": "get_pull_api_v1_github_pulls__number__get",
+    "params": [
+      "header:authorization",
+      "path:number"
+    ],
+    "responses": [
+      "200",
+      "422"
     ]
   },
   "GET /api/v1/goals/": {
@@ -467,6 +508,25 @@
       "422"
     ]
   },
+  "GET /api/v1/tasks": {
+    "has_body": false,
+    "operation_id": "list_tasks_api_v1_tasks_get",
+    "params": [
+      "header:authorization",
+      "query:device_id",
+      "query:goal_id",
+      "query:limit",
+      "query:offset",
+      "query:overdue_only",
+      "query:priority_max",
+      "query:priority_min",
+      "query:state"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/tasks/_ping": {
     "has_body": false,
     "operation_id": "module_ping_api_v1_tasks__ping_get",
@@ -484,6 +544,55 @@
     "params": [],
     "responses": [
       "200"
+    ]
+  },
+  "GET /api/v1/tasks/budget-status": {
+    "has_body": false,
+    "operation_id": "budget_status_api_v1_tasks_budget_status_get",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/tasks/dead": {
+    "has_body": false,
+    "operation_id": "list_dead_letters_api_v1_tasks_dead_get",
+    "params": [
+      "header:authorization",
+      "query:include_resolved",
+      "query:limit",
+      "query:offset"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/tasks/{task_id}": {
+    "has_body": false,
+    "operation_id": "get_task_api_v1_tasks__task_id__get",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/tasks/{task_id}/candidates": {
+    "has_body": false,
+    "operation_id": "candidates_api_v1_tasks__task_id__candidates_get",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
     ]
   },
   "GET /health": {
@@ -714,6 +823,40 @@
       "422"
     ]
   },
+  "POST /api/v1/github/events/{event_id}/replay": {
+    "has_body": false,
+    "operation_id": "replay_event_api_v1_github_events__event_id__replay_post",
+    "params": [
+      "header:authorization",
+      "path:event_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/github/sync": {
+    "has_body": false,
+    "operation_id": "sync_api_v1_github_sync_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/github/webhook": {
+    "has_body": false,
+    "operation_id": "github_webhook_api_v1_github_webhook_post",
+    "params": [
+      "query:eager"
+    ],
+    "responses": [
+      "202",
+      "422"
+    ]
+  },
   "POST /api/v1/goals/": {
     "has_body": true,
     "operation_id": "create_goal_api_v1_goals__post",
@@ -791,6 +934,113 @@
     ],
     "responses": [
       "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks": {
+    "has_body": true,
+    "operation_id": "create_task_api_v1_tasks_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/claim": {
+    "has_body": true,
+    "operation_id": "claim_api_v1_tasks_claim_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "204",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/{task_id}/cancel": {
+    "has_body": true,
+    "operation_id": "cancel_api_v1_tasks__task_id__cancel_post",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/{task_id}/complete": {
+    "has_body": true,
+    "operation_id": "complete_api_v1_tasks__task_id__complete_post",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/{task_id}/fail": {
+    "has_body": true,
+    "operation_id": "fail_api_v1_tasks__task_id__fail_post",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/{task_id}/heartbeat": {
+    "has_body": true,
+    "operation_id": "heartbeat_api_v1_tasks__task_id__heartbeat_post",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/{task_id}/lease": {
+    "has_body": true,
+    "operation_id": "lease_api_v1_tasks__task_id__lease_post",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/{task_id}/requeue": {
+    "has_body": true,
+    "operation_id": "requeue_api_v1_tasks__task_id__requeue_post",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/tasks/{task_id}/start": {
+    "has_body": true,
+    "operation_id": "start_api_v1_tasks__task_id__start_post",
+    "params": [
+      "header:authorization",
+      "path:task_id"
+    ],
+    "responses": [
+      "200",
       "422"
     ]
   }
