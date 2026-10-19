@@ -136,7 +136,7 @@ class FakeLedgerRepo:
             Decimal(0),
         )
 
-    async def gate_minutes_by_day(self, days: int) -> dict[date, Decimal]:
+    async def gate_minutes_by_day(self, days: int, now=None) -> dict[date, Decimal]:
         out: dict[date, Decimal] = {}
         for a in self.attention:
             if a.source == "gate":

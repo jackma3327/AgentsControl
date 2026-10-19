@@ -161,7 +161,7 @@ async def bandwidth_status(
     decisions_today = await approval_repo.decided_today(now)
 
     days = config.duration_window_days
-    minutes_by_day: Mapping[date, Decimal] = await ledger_repo.gate_minutes_by_day(days)
+    minutes_by_day: Mapping[date, Decimal] = await ledger_repo.gate_minutes_by_day(days, now)
     decisions_by_day = await approval_repo.decisions_by_day(days, now)
     daily_avg: list[float] = []
     for offset in range(days - 1, -1, -1):  # 旧 → 新

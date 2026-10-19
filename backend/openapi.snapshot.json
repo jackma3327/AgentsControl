@@ -18,6 +18,30 @@
       "200"
     ]
   },
+  "GET /api/v1/approvals/bandwidth": {
+    "has_body": false,
+    "operation_id": "approval_bandwidth_api_v1_approvals_bandwidth_get",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/approvals/queue": {
+    "has_body": false,
+    "operation_id": "list_approval_queue_api_v1_approvals_queue_get",
+    "params": [
+      "header:authorization",
+      "query:levels",
+      "query:limit"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/auth/me": {
     "has_body": false,
     "operation_id": "me_api_v1_auth_me_get",
@@ -244,6 +268,95 @@
       "200"
     ]
   },
+  "GET /api/v1/ledger/attention": {
+    "has_body": false,
+    "operation_id": "ledger_attention_api_v1_ledger_attention_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/budget-status": {
+    "has_body": false,
+    "operation_id": "ledger_budget_status_api_v1_ledger_budget_status_get",
+    "params": [
+      "header:authorization",
+      "query:goal_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/entries": {
+    "has_body": false,
+    "operation_id": "list_ledger_entries_api_v1_ledger_entries_get",
+    "params": [
+      "header:authorization",
+      "query:category",
+      "query:goal_id",
+      "query:limit",
+      "query:period",
+      "query:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/export.csv": {
+    "has_body": false,
+    "operation_id": "export_ledger_csv_api_v1_ledger_export_csv_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/reconcile": {
+    "has_body": false,
+    "operation_id": "reconcile_ledger_api_v1_ledger_reconcile_get",
+    "params": [
+      "header:authorization",
+      "query:dry_run",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/subscriptions": {
+    "has_body": false,
+    "operation_id": "list_subscriptions_api_v1_ledger_subscriptions_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/summary": {
+    "has_body": false,
+    "operation_id": "ledger_summary_api_v1_ledger_summary_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/tasks/_ping": {
     "has_body": false,
     "operation_id": "module_ping_api_v1_tasks__ping_get",
@@ -293,6 +406,41 @@
     "params": [
       "header:authorization",
       "path:goal_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "PATCH /api/v1/ledger/subscriptions/{sub_id}": {
+    "has_body": true,
+    "operation_id": "update_subscription_api_v1_ledger_subscriptions__sub_id__patch",
+    "params": [
+      "header:authorization",
+      "path:sub_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/approvals": {
+    "has_body": true,
+    "operation_id": "create_approval_api_v1_approvals_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/approvals/{approval_id}/decide": {
+    "has_body": true,
+    "operation_id": "decide_approval_api_v1_approvals__approval_id__decide_post",
+    "params": [
+      "header:authorization",
+      "path:approval_id"
     ],
     "responses": [
       "200",
@@ -394,6 +542,28 @@
     ],
     "responses": [
       "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/ledger/entries": {
+    "has_body": true,
+    "operation_id": "create_ledger_entry_api_v1_ledger_entries_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/ledger/subscriptions": {
+    "has_body": true,
+    "operation_id": "create_subscription_api_v1_ledger_subscriptions_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
       "422"
     ]
   }

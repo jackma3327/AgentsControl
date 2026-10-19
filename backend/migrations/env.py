@@ -17,12 +17,11 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import app.modules as modules_pkg
 from app.core.config import settings
 from app.core.db import Base
 
 # 逐个导入模块的 models.py，让 autogenerate 能看到全部表
-import app.modules as modules_pkg
-
 for info in pkgutil.iter_modules(modules_pkg.__path__):
     try:
         importlib.import_module(f"app.modules.{info.name}.models")

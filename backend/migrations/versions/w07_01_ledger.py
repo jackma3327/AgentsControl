@@ -23,7 +23,6 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "w07_01_ledger"
 down_revision: str | None = "w02_01_intake"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select, text
@@ -84,12 +84,19 @@ class LedgerRepository:
         return Decimal((await self._session.execute(stmt)).scalar_one())
 
     async def get_goal_budget(self, goal_id: uuid.UUID) -> Decimal | None:
-        """只读依赖（W02 的 goals 表）。表未落地时返回 None，不抛错。"""
+        """只读依赖（W02 的 goals 表）。表未落地时返回 None，不抛错。
+
+        goals.id 是 String(36)，由 W02 的 new_id() 以 uuid4().hex（无连字符）生成，
+        而入参是 UUID 对象 —— 两种文本形态都兜住，避免永远匹配不上。
+        """
         try:
             row = (
                 await self._session.execute(
-                    text("SELECT budget FROM goals WHERE id = :gid"),
-                    {"gid": str(goal_id)},
+                    text(
+                        "SELECT budget_money FROM goals "
+                        "WHERE id IN (:gid_hex, :gid_str)"
+                    ),
+                    {"gid_hex": goal_id.hex, "gid_str": str(goal_id)},
                 )
             ).first()
         except ProgrammingError:
@@ -114,14 +121,15 @@ class LedgerRepository:
         )
         return Decimal((await self._session.execute(stmt)).scalar_one())
 
-    async def gate_minutes_by_day(self, days: int) -> dict[date, Decimal]:
+    async def gate_minutes_by_day(self, days: int, now: datetime) -> dict[date, Decimal]:
         """最近 N 天每天的闸门注意力分钟数（用于带宽熔断的耗时趋势）。"""
+        since = now - timedelta(days=days)
         stmt = (
             select(
                 func.date(AttentionEntry.occurred_at).label("d"),
                 func.coalesce(func.sum(AttentionEntry.minutes), 0),
             )
-            .where(AttentionEntry.source == GATE_SOURCE)
+            .where(AttentionEntry.source == GATE_SOURCE, AttentionEntry.occurred_at >= since)
             .group_by(func.date(AttentionEntry.occurred_at))
         )
         rows = (await self._session.execute(stmt)).all()
@@ -130,33 +138,32 @@ class LedgerRepository:
     async def count_outcomes(self, start: datetime, end: datetime) -> int | None:
         """达标产出数（目标 achieved 或任务 done 且验收通过）。
 
-        唯一口径定义见 attention.py 模块注释。goals/tasks 表由 W02/W03 落地，
-        落地前返回 None（min/outcome 显示 null，而不是伪造 0）。
+        唯一口径定义见 attention.py 模块注释。goals（W02）/ tasks（W03）
+        各自独立探测：未落地的表按 0 计、不拖累另一张表；
+        两张表都没有时才返回 None（min/outcome 显示 null，而不是伪造 0）。
         """
-        try:
-            achieved = (
-                await self._session.execute(
-                    text(
-                        "SELECT count(*) FROM goals "
-                        "WHERE achieved = TRUE AND achieved_at >= :s AND achieved_at < :e"
-                    ),
-                    {"s": start, "e": end},
+        queries = (
+            # goals 终态是 status 列（draft → active → {achieved, frozen, degraded}）
+            "SELECT count(*) FROM goals "
+            "WHERE status = 'achieved' "
+            "AND achieved_at >= :s AND achieved_at < :e",
+            "SELECT count(*) FROM tasks "
+            "WHERE state = 'done' AND accepted = TRUE "
+            "AND completed_at >= :s AND completed_at < :e",
+        )
+        total = 0
+        landed_any = False
+        for sql in queries:
+            try:
+                total += int(
+                    (
+                        await self._session.execute(text(sql), {"s": start, "e": end})
+                    ).scalar_one()
                 )
-            ).scalar_one()
-            tasks_done = (
-                await self._session.execute(
-                    text(
-                        "SELECT count(*) FROM tasks "
-                        "WHERE state = 'done' AND accepted = TRUE "
-                        "AND completed_at >= :s AND completed_at < :e"
-                    ),
-                    {"s": start, "e": end},
-                )
-            ).scalar_one()
-        except ProgrammingError:
-            await self._session.rollback()
-            return None
-        return int(achieved) + int(tasks_done)
+                landed_any = True
+            except ProgrammingError:
+                await self._session.rollback()
+        return total if landed_any else None
 
     # ------------------------------------------------------------------ 订阅
 
