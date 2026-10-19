@@ -36,6 +36,7 @@ export function Sidebar() {
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      prefetch={false}
                       title={`${item.label} · ${item.question}`}
                       aria-current={active ? "page" : undefined}
                       className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-[13px] transition-colors lg:px-2 ${
@@ -61,7 +62,10 @@ export function Sidebar() {
       </nav>
 
       <div className="hidden px-2 pt-4 text-[10px] text-muted lg:block">
-        v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0"}
+        <div>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0"}</div>
+        <div className="mt-1">
+          <kbd className="rounded border border-line px-1">?</kbd> 快捷键
+        </div>
       </div>
     </aside>
   );

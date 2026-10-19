@@ -243,7 +243,7 @@ export interface Bandwidth {
   };
 }
 
-/** 任务 / 设备 —— TODO(sync): W03/W04 合并后替换为生成类型 */
+/** 任务 —— TODO(sync): W03 合并后替换为生成类型 */
 export interface Task {
   id: string;
   title: string;
@@ -254,12 +254,22 @@ export interface Task {
   updated_at: string;
 }
 
+/** 设备 —— W04 已合并，字段对齐 `GET /devices/` 的 DeviceOut */
+export type DeviceStatus = "online" | "suspect" | "offline" | "revoked";
+
 export interface Device {
-  id: string;
   node_id: string;
-  name: string;
-  status: "online" | "suspect" | "offline";
+  trust: "managed" | "third_party";
+  purpose: string;
+  squad: string | null;
+  tolerance: number;
   caps: string[];
-  tolerance: "can_sleep" | "always_on";
+  status: DeviceStatus;
+  agent_version: string | null;
   last_seen_at: string | null;
+  missed_heartbeats: number;
+  last_event_seq: number;
+  woke_at: string | null;
+  created_at: string | null;
+  revoked_at: string | null;
 }

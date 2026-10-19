@@ -13,6 +13,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { AsyncBoundary } from "@/components/AsyncBoundary";
 import { Badge, Button, Card, CardHeader, Segmented } from "@/components/ui";
+import { ApiError } from "@/lib/api/client";
+import { errorText } from "@/lib/api/errorText";
 import {
   useCreateGoal,
   useCreateIntake,
@@ -36,12 +38,46 @@ const STATUS_TONE = {
   archived_interest: "neutral",
 } as const;
 
+/** 三问失败：未配置/不可用的 AI 要给可执行的配置项，而不是笼统的"失败"。 */
+function structureErrorText(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === "upstream_error" || error.code === "not_implemented") {
+      return "AI 服务未配置或不可用，请检查 LITELLM_BASE_URL";
+    }
+    if (error.code === "unauthorized") return "登录已过期，请重新登录后再试";
+    return errorText(error.code, "三问失败，请重试");
+  }
+  return errorText("network_error");
+}
+
+function captureErrorText(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === "unauthorized") return "登录已过期，请重新登录后再记录";
+    return errorText(error.code, "记录失败，请重试");
+  }
+  return errorText("network_error");
+}
+
+function promoteErrorText(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === "upstream_error" || error.code === "not_implemented") {
+      return "AI 服务未配置或不可用，请检查 LITELLM_BASE_URL";
+    }
+    if (error.code === "unauthorized") return "登录已过期，请重新登录后再创建";
+    if (error.code === "validation_failed") return "验收标准不能为空，或格式不符合要求";
+    return errorText(error.code, "创建失败，请重试");
+  }
+  return errorText("network_error");
+}
+
 export function InboxView() {
   const [text, setText] = useState("");
   const [active, setActive] = useState<StructureResult | null>(null);
   const [track, setTrack] = useState<"growth" | "money">("growth");
   const [budgetHours, setBudgetHours] = useState(4);
+  const [justSaved, setJustSaved] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const list = useIntakeItems();
   const create = useCreateIntake();
@@ -52,12 +88,23 @@ export function InboxView() {
     inputRef.current?.focus();
   }, []);
 
+  // 连续提交时只保留最后一次的 2 秒反馈，避免多个 timer 叠在一起
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+    },
+    [],
+  );
+
   const submit = () => {
     const value = text.trim();
     if (!value || create.isPending) return;
     create.mutate(value, {
       onSuccess: () => {
         setText("");
+        setJustSaved(true);
+        if (savedTimer.current) clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setJustSaved(false), 2000);
         inputRef.current?.focus();
       },
     });
@@ -92,11 +139,23 @@ export function InboxView() {
           />
           <div className="mt-2 flex items-center justify-between">
             <span className="text-[11px] text-muted">30 秒内可完成 · 不要求完整</span>
-            <Button variant="primary" size="md" onClick={submit} disabled={!text.trim() || create.isPending}>
-              {create.isPending ? "记录中…" : "记下来"}
+            <Button
+              variant="primary"
+              size="md"
+              onClick={submit}
+              disabled={(!text.trim() && !justSaved) || create.isPending}
+            >
+              {create.isPending ? "记录中…" : justSaved ? "已记下 ✓" : "记下来"}
             </Button>
           </div>
-          {create.error ? <p className="mt-2 text-[11px] text-danger">记录失败，请重试</p> : null}
+          <span className="sr-only" role="status" aria-live="polite">
+            {justSaved ? "已记下" : ""}
+          </span>
+          {create.error ? (
+            <p role="alert" className="mt-2 text-[11px] text-danger">
+              {captureErrorText(create.error)}
+            </p>
+          ) : null}
         </Card>
 
         <Card className="mt-4">
@@ -142,7 +201,16 @@ export function InboxView() {
           title="三问 → 目标卡"
           hint="只问三个问题，答不出第一问就进兴趣池"
         />
-        {active === null ? (
+        {structure.error ? (
+          <div role="alert" className="px-4 py-6">
+            <div className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-[12px] leading-relaxed text-danger">
+              {structureErrorText(structure.error)}
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-muted">
+              修好配置后重新点「三问」即可；也可以去「目标」页直接新建，不必等 AI。
+            </p>
+          </div>
+        ) : active === null ? (
           <div className="px-4 py-8 text-center text-[12px] leading-relaxed text-muted">
             点左侧任意「三问」，AI 会把它变成一张可验收的目标卡。
             <br />
@@ -193,7 +261,7 @@ export function InboxView() {
                   variant="primary"
                   size="md"
                   className="w-full"
-                  disabled={createGoal.isPending}
+                  disabled={createGoal.isPending || !active.structured.acceptance}
                   onClick={() => {
                     createGoal.mutate(
                       {
@@ -210,8 +278,13 @@ export function InboxView() {
                 >
                   {createGoal.isPending ? "创建中…" : "转成目标卡"}
                 </Button>
+                {!active.structured.acceptance ? (
+                  <p className="text-[11px] text-warn">三问没给出验收标准：先放进兴趣池，或去目标页直接写。</p>
+                ) : null}
                 {createGoal.error ? (
-                  <p className="text-[11px] text-danger">创建失败：验收标准不能为空</p>
+                  <p role="alert" className="text-[11px] text-danger">
+                    {promoteErrorText(createGoal.error)}
+                  </p>
                 ) : null}
               </div>
             )}

@@ -6,8 +6,8 @@
  * 这不是"看它在跑"，是发现三件事：
  *   撞车（同文件被两个 Agent 改）/ 阻塞（等依赖或审批超时）/ 偏离（改了无关文件）。
  *
- * 数据来源：W06 的 execution_sessions 尚未合并，当前用明确标注的示例数据；
- * 三种标记的判定逻辑与颜色语义已固定，接入后只换数据源，不改视图。
+ * 数据来源：W03 任务区间 / W06 会话表的后端已合并，控制台视图接口尚未接入，
+ * 当前用明确标注的示例数据；三种标记的判定逻辑与颜色语义已固定，接入后只换数据源，不改视图。
  */
 
 import { useMemo } from "react";
@@ -98,7 +98,7 @@ export function ProjectsView() {
             横轴时间、纵轴 Agent。要发现的是撞车、阻塞、偏离，不是"看着热闹"。
           </p>
         </div>
-        <Badge tone="warn">示例数据 · W06 接入后替换</Badge>
+        <Badge tone="warn">示例数据 · 待接入真实接口</Badge>
       </header>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_0.65fr]">
@@ -164,7 +164,7 @@ export function ProjectsView() {
           <Card className="p-4">
             <div className="text-[12px] font-medium">为什么现在只有示例</div>
             <p className="mt-2 text-[11px] leading-relaxed text-muted">
-              会话数据来自 W06 的 Worker/Orca 会话表，任务占用区间来自 W03。两个模块尚未合并，
+              W03 的任务区间与 W06 的会话表后端已合并，但控制台还没接上对应视图接口。
               这里先固定视图与判定规则，接入时只替换 <span className="font-mono">DEMO</span> 数据源。
             </p>
           </Card>

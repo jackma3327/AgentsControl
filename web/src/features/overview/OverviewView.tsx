@@ -8,9 +8,10 @@
 import Link from "next/link";
 
 import { AsyncBoundary } from "@/components/AsyncBoundary";
-import { Badge, Card, CardHeader, StatTile } from "@/components/ui";
-import { useApprovalQueue, useCeiling, useGoals, useLedger } from "@/lib/api/hooks";
-import { percent, yuan } from "@/lib/format";
+import { Badge, Card, CardHeader, Skeleton, StatTile } from "@/components/ui";
+import { useApprovalQueue, useCeiling, useDevices, useGoals, useLedger } from "@/lib/api/hooks";
+import type { DeviceStatus } from "@/lib/api/types";
+import { timeAgo, yuan } from "@/lib/format";
 
 const DEVICE_SLOTS = [
   { name: "Mac 主机", state: "unknown" },
@@ -20,13 +21,22 @@ const DEVICE_SLOTS = [
   { name: "第三方", state: "unknown" },
 ] as const;
 
+const DEVICE_TONE: Record<DeviceStatus, { dot: string; label: string }> = {
+  online: { dot: "bg-ok", label: "在线" },
+  suspect: { dot: "bg-warn", label: "可疑" },
+  offline: { dot: "bg-danger", label: "离线" },
+  revoked: { dot: "bg-line", label: "已吊销" },
+};
+
 export function OverviewView() {
   const goals = useGoals();
   const approvals = useApprovalQueue();
   const ceiling = useCeiling();
   const ledger = useLedger();
+  const devices = useDevices();
 
   const rows = goals.data ?? [];
+  const deviceRows = (devices.data ?? []).slice(0, 5);
   const money = rows.filter((g) => g.track === "money").length;
   const growth = rows.filter((g) => g.track === "growth").length;
   const blocked = ceiling.data?.blocked.length ?? 0;
@@ -118,20 +128,67 @@ export function OverviewView() {
             <CardHeader
               title="设备热力"
               hint="绿=在线，黄=可疑，红=离线"
-              right={<Badge tone="warn">W04 未接入</Badge>}
+              right={
+                devices.error ? (
+                  <Badge tone="warn">示例数据 · 待接入真实接口</Badge>
+                ) : (
+                  <Badge tone="neutral">{deviceRows.length} 台</Badge>
+                )
+              }
             />
-            <div className="grid grid-cols-5 gap-2 p-3">
-              {DEVICE_SLOTS.map((slot) => (
-                <div
-                  key={slot.name}
-                  className="flex h-16 flex-col items-center justify-center rounded border border-dashed border-line bg-canvas text-center"
-                  title="设备接入（W04）合并后显示真实状态"
-                >
-                  <span className="text-[10px] text-muted">{slot.name}</span>
-                  <span className="mt-1 text-[10px] text-muted">未知</span>
+            {devices.isLoading ? (
+              <div className="p-3">
+                <Skeleton rows={2} />
+              </div>
+            ) : devices.error ? (
+              <>
+                <div className="grid grid-cols-5 gap-2 p-3">
+                  {DEVICE_SLOTS.map((slot) => (
+                    <div
+                      key={slot.name}
+                      className="flex h-16 flex-col items-center justify-center rounded border border-dashed border-line bg-canvas text-center"
+                      title="设备接口不可用，此处只是固定槽位"
+                    >
+                      <span className="text-[10px] text-muted">{slot.name}</span>
+                      <span className="mt-1 text-[10px] text-muted">未知</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <p className="px-3 pb-3 text-[10px] leading-relaxed text-muted">
+                  设备接口不可用（可能是未登录），以上只是固定槽位，不代表实时状态。
+                </p>
+              </>
+            ) : deviceRows.length === 0 ? (
+              <p className="px-4 py-6 text-center text-[11px] leading-relaxed text-muted">
+                还没有设备接入。启动 Go agent 并完成注册后，这里会显示实时状态。
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
+                {deviceRows.map((device) => {
+                  const tone = DEVICE_TONE[device.status];
+                  return (
+                    <div
+                      key={device.node_id}
+                      className="rounded border border-line bg-canvas px-2 py-2"
+                      title={`${device.node_id}${device.purpose ? ` · ${device.purpose}` : ""}`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden />
+                        <span className="truncate text-[11px] font-medium">
+                          {device.purpose || device.node_id}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-1 text-[10px] text-muted">
+                        <span>{tone.label}</span>
+                        <span className="truncate">
+                          {device.last_seen_at ? timeAgo(device.last_seen_at) : "未上报"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
 
           <Card>
