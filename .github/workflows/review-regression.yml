@@ -1,0 +1,42 @@
+name: Review regression
+
+# 评审回归（S5-02 / R18）
+# 设计说明
+# 1) 只支持手动触发：脚本需要一个已部署、已创建 owner 的环境，PR 里没有这种环境；
+#    因此**不接入 PR 必过门禁**，避免把别人的 PR 卡成红。
+# 2) 账号密码只从 secrets 读，绝不写进本文件；缺 secret 时脚本按契约退出 2 并打印缺项。
+# 3) 不改 ci.yml（W09-I06 冻结）：这是独立 workflow，与主 CI 互不影响。
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "目标环境基址（含协议与端口，例如 http://localhost:8080）"
+        required: true
+        default: "http://localhost:8080"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-regression-${{ inputs.base_url }}
+  cancel-in-progress: false
+
+jobs:
+  regression:
+    name: 7 条评审断言
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 静态检查（shellcheck）
+        run: shellcheck scripts/review-regression.sh
+
+      - name: 运行回归脚本
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          OWNER_EMAIL: ${{ secrets.REVIEW_OWNER_EMAIL }}
+          OWNER_PASSWORD: ${{ secrets.REVIEW_OWNER_PASSWORD }}
+        run: bash scripts/review-regression.sh
