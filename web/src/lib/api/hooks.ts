@@ -17,6 +17,7 @@ import type {
   Bandwidth,
   Ceiling,
   CognitionCard,
+  Device,
   DriftAlert,
   EvalRun,
   Goal,
@@ -45,6 +46,7 @@ export const qk = {
   approvals: ["approvals"] as const,
   bandwidth: ["bandwidth"] as const,
   tasks: ["tasks"] as const,
+  devices: ["devices"] as const,
 };
 
 // ------------------------------------------------------------------ 收件箱
@@ -243,6 +245,14 @@ export function useTasks() {
     queryKey: qk.tasks,
     queryFn: () => api.get<{ items: Task[]; count: number }>("/tasks/?limit=100"),
     retry: false,
+  });
+}
+
+// --------------------------------------------------------- 设备（W04 已合并）
+export function useDevices() {
+  return useQuery({
+    queryKey: qk.devices,
+    queryFn: () => api.get<Device[]>("/devices/?limit=50"),
   });
 }
 

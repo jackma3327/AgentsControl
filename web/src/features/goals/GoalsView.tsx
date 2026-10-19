@@ -7,8 +7,11 @@
  * 止损不是红字，是行动按钮（冻结 / 降级）——只显示状态等于把决策又推回给人。
  */
 
+import { useState } from "react";
+
 import { AsyncBoundary } from "@/components/AsyncBoundary";
 import { Badge, Button, Card, CardHeader, EmptyState, ProgressBar, StatTile } from "@/components/ui";
+import { GoalCreateForm } from "@/features/goals/GoalCreateForm";
 import { useBudgetStatus, useGoals, usePatchGoal } from "@/lib/api/hooks";
 import type { Goal, GoalTrack } from "@/lib/api/types";
 import { daysLeft, hours, shortDate, yuan } from "@/lib/format";
@@ -24,18 +27,28 @@ export function GoalsView() {
   const money = rows.filter((g) => g.track === "money");
   const growth = rows.filter((g) => g.track === "growth");
   const atRisk = rows.filter((g) => g.stop_loss_triggered_at).length;
+  const [creating, setCreating] = useState(false);
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="mb-4 flex items-end justify-between">
+      <header className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">目标</h1>
           <p className="mt-1 text-[12px] text-muted">两条轨的验收方式不同，不要用同一套 KPI 压进化目标。</p>
         </div>
-        <div className="text-[11px] text-muted">
-          共 {rows.length} 个 · 触发止损 {atRisk}
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-muted">
+            共 {rows.length} 个 · 触发止损 {atRisk}
+          </span>
+          {creating ? null : (
+            <Button variant="primary" size="md" onClick={() => setCreating(true)}>
+              新建目标
+            </Button>
+          )}
         </div>
       </header>
+
+      {creating ? <GoalCreateForm onClose={() => setCreating(false)} /> : null}
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="赚钱轨" value={money.length} hint="进行中" />
@@ -50,7 +63,14 @@ export function GoalsView() {
         isEmpty={rows.length === 0}
         onRetry={() => void goals.refetch()}
         emptyTitle="还没有目标"
-        emptyHint="目标来自体感：先去收件箱记一条，再用三问把它变成契约。"
+        emptyHint="直接新建，或去收件箱记一条再用三问变成契约。"
+        emptyAction={
+          creating ? undefined : (
+            <Button variant="primary" size="md" onClick={() => setCreating(true)}>
+              新建目标
+            </Button>
+          )
+        }
       >
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {(["money", "growth"] as const).map((track) => (
