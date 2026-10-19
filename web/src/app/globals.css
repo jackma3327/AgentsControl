@@ -22,6 +22,12 @@
   --ok: #12805c;
   --warn: #b45309;
   --danger: #b42318;
+  /* 图表系列色与语义色：只在这里出现 hex，组件一律引用变量 */
+  --chart-4: #6b5bd6;
+  --chart-5: #0e7490;
+  --caution: #d9a300;
+  --caution-ink: #1a1d24;
+  --on-strong: #ffffff;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -44,4 +50,14 @@ body {
   border: 1px dashed var(--line);
   background: var(--surface);
   border-radius: 10px;
+}
+
+@layer components {
+  /* 表单控件统一走这里，避免每个页面各写一套边框与 focus 样式 */
+  .input {
+    @apply w-full rounded-md border border-line bg-canvas px-2.5 py-1.5 text-[13px] text-ink outline-none;
+  }
+  .input:focus {
+    border-color: var(--brand);
+  }
 }

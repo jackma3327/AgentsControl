@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { InboxView } from "@/features/inbox/InboxView";
 
-export default function InboxPage() {
-  return <PagePlaceholder title="收件箱" question="我刚想到什么来着？" owner="W10" />;
+export default function Page() {
+  return <InboxView />;
 }

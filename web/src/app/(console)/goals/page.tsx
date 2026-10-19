@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { GoalsView } from "@/features/goals/GoalsView";
 
-export default function GoalsPage() {
-  return <PagePlaceholder title="目标" question="这些事值不值得继续？" owner="W10" />;
+export default function Page() {
+  return <GoalsView />;
 }

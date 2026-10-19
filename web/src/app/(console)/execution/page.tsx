@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { ExecutionView } from "@/features/execution/ExecutionView";
 
-export default function ExecutionPage() {
-  return <PagePlaceholder title="执行" question="活干到哪了，卡在哪？" owner="W10" />;
+export default function Page() {
+  return <ExecutionView />;
 }

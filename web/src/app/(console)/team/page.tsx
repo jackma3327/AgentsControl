@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { TeamView } from "@/features/team/TeamView";
 
-export default function TeamPage() {
-  return <PagePlaceholder title="团队" question="谁在干，谁该走？" owner="W10" />;
+export default function Page() {
+  return <TeamView />;
 }

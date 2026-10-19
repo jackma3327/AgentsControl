@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { LedgerView } from "@/features/ledger/LedgerView";
 
-export default function LedgerPage() {
-  return <PagePlaceholder title="账本" question="值不值？" owner="W10" />;
+export default function Page() {
+  return <LedgerView />;
 }

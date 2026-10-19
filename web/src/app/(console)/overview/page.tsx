@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { OverviewView } from "@/features/overview/OverviewView";
 
-export default function OverviewPage() {
-  return <PagePlaceholder title="总视图" question="所有项目现在什么状态？" owner="W10" />;
+export default function Page() {
+  return <OverviewView />;
 }

@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { TodayView } from "@/features/today/TodayView";
 
-export default function TodayPage() {
-  return <PagePlaceholder title="今日" question="今天有什么事非我不可？" owner="W10" />;
+export default function Page() {
+  return <TodayView />;
 }
