@@ -98,8 +98,32 @@ def gh_prs() -> dict[str, dict]:
     return result
 
 
+def plan_statuses(wid: str) -> dict[str, str]:
+    """从 plan/Wxx.md 读每个 issue 的声明状态（DONE/REVIEW/TODO）。
+
+    看板以计划状态为准：合并后由窗口 owner 把 REVIEW 改 DONE；
+    脚本只负责渲染，不猜"代码看起来写完了没有"。
+    """
+    path = ROOT / "plan" / f"{wid}.md"
+    if not path.exists():
+        return {}
+    statuses: dict[str, str] = {}
+    current: str | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^###\s+(W\d{2}-I\d{2})\b", line)
+        if m:
+            current = m.group(1)
+            continue
+        if current:
+            m = re.match(r"^\|\s*状态\s*\|\s*([A-Za-z]+)", line)
+            if m:
+                statuses[current] = m.group(1).upper()
+                current = None
+    return statuses
+
+
 def done_issues(branch: str) -> dict[str, str]:
-    """从分支上的提交消息解析已完成的 issue：'feat(#42): xxx' 中的 42。"""
+    """从分支提交消息里找 issue 号，仅用于展示"最近提交"，不参与状态判定。"""
     ref = f"origin/{branch}"
     if subprocess.run(["git", "rev-parse", "--verify", ref], cwd=ROOT,
                       capture_output=True).returncode != 0:
@@ -133,6 +157,7 @@ for w in plan.get("windows") or []:
     branch = w["branch"]
     pr = prs.get(branch)
     done = done_issues(branch)
+    declared = plan_statuses(wid)
 
     if pr:
         pr_label = f"PR #{pr['number']} ({'Draft' if pr['draft'] else pr['state']}, checks: {pr['checks']})"
@@ -149,21 +174,26 @@ for w in plan.get("windows") or []:
     md.append("|---|---|---|---|---|")
 
     finished = 0
+    review = 0
     for it in w.get("issues") or []:
         iid = it["id"]
-        # 允许提交消息里写 issue 号（如 42）或完整 id（如 W03-I02）
         sha = done.get(iid) or done.get(iid.split("-")[-1])
-        state = "DONE" if sha else "TODO"
-        if sha:
+        state = declared.get(iid, "TODO")
+        if state == "DONE":
             finished += 1
-        rows.append(f"  {iid:<9} {it['title']:<24} {state:<5} {(sha or ''):<8}")
+        elif state == "REVIEW":
+            review += 1
+        rows.append(f"  {iid:<9} {it['title']:<24} {state:<6} {(sha or ''):<8}")
         md.append(f"| {iid} | {it['title']} | {it['wave']} | {state} | `{sha or '—'}` |")
 
     total = len(w.get("issues") or [])
     pct = int(finished / total * 100) if total else 0
     bar = "█" * (pct // 10) + "·" * (10 - pct // 10)
-    rows.append(f"  进度 {finished}/{total}  {bar} {pct}%")
-    md.append(f"\n**进度 {finished}/{total}（{pct}%）**\n")
+    stale = ""
+    if pr and pr.get("state") == "MERGED" and (finished + review) < total:
+        stale = "  ⚠ 计划状态滞后（PR 已合并，plan 仍有 TODO）"
+    rows.append(f"  进度 {finished}/{total}  {bar} {pct}%" + (f"  待合并 {review}" if review else "") + stale)
+    md.append(f"\n**进度 {finished}/{total}（{pct}%）**" + (f"，另有 {review} 条待合并" if review else "") + f"{stale}\n")
 
 print("\n".join(rows))
 print(f"\n生成于 {now}　权威状态见 git 与 PR；本视图可用 ./scripts/window-status.sh 随时重建。")
