@@ -5,7 +5,10 @@
  * 颜色一律走 globals.css 的 CSS 变量（--ink/--muted/--line/--brand/--ok/--warn/--danger）。
  */
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+
+import { errorText } from "@/lib/api/errorText";
 
 export function Card({
   children,
@@ -131,17 +134,53 @@ export function ErrorState({
   onRetry?: () => void;
   hint?: string;
 }) {
+  const router = useRouter();
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const diagnostic = requestId ? `request_id=${requestId}` : null;
+
+  const copyDiagnostic = async () => {
+    if (!diagnostic) return;
+    try {
+      await navigator.clipboard.writeText(diagnostic);
+      setCopied(true);
+      setCopyFailed(false);
+    } catch {
+      // 剪贴板不可用（非安全上下文 / 权限被拒）：降级为可选中文本，手动复制
+      setCopyFailed(true);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-      <div className="text-sm font-medium text-danger">出错了</div>
-      <div className="text-[12px] text-muted">
-        {hint ?? "请求失败，可稍后重试。"}
-        {requestId ? <span className="ml-2 font-mono text-[10px]">request_id={requestId}</span> : null}
+      {/* 主区只留一句人话（S1-06）；request_id 收进"复制诊断信息"，不占首屏 */}
+      <div className="text-[13px] font-medium text-danger">
+        {hint ?? errorText(code, "请求失败，可稍后重试。")}
       </div>
-      {onRetry ? (
-        <Button onClick={onRetry} variant="ghost">
-          重试
-        </Button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {code === "unauthorized" ? (
+          <Button
+            variant="primary"
+            onClick={() =>
+              router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`)
+            }
+          >
+            去登录
+          </Button>
+        ) : null}
+        {onRetry ? (
+          <Button onClick={onRetry} variant="ghost">
+            重试
+          </Button>
+        ) : null}
+        {diagnostic ? (
+          <Button onClick={() => void copyDiagnostic()} variant="ghost">
+            {copied ? "已复制" : "复制诊断信息"}
+          </Button>
+        ) : null}
+      </div>
+      {copyFailed && diagnostic ? (
+        <span className="select-all font-mono text-[10px] text-muted">{diagnostic}</span>
       ) : null}
     </div>
   );

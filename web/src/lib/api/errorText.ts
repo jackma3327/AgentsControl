@@ -14,3 +14,14 @@ const MAP: Record<string, string> = {
 export function errorText(code: string, fallback?: string): string {
   return MAP[code] ?? fallback ?? "请求失败";
 }
+
+/**
+ * 限流剩余时间（S1-05）：把 `details.retry_after`（整数秒）渲染成"还需 X 分钟"。
+ * 无数据或非法值返回 null，由调用方回退到 MAP 里的兜底文案。
+ */
+export function rateLimitedHint(details: unknown): string | null {
+  const seconds = (details as { retry_after?: unknown } | null | undefined)?.retry_after;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return null;
+  if (seconds < 60) return `还需 ${Math.ceil(seconds)} 秒`;
+  return `还需 ${Math.ceil(seconds / 60)} 分钟`;
+}

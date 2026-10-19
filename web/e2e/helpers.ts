@@ -5,6 +5,12 @@ export type Call = { method: string; path: string; body: unknown };
 
 const NOW = "2026-10-19T05:00:00Z";
 
+// --- 认证 fixture 常量（与后端默认策略对齐：5 次失败锁 15 分钟）---
+export const TEST_SUBJECT = "owner@example.com";
+export const TEST_PASSWORD = "correct-password-1";
+export const LOGIN_FAILURE_LIMIT = 5;
+const RETRY_AFTER_SECONDS = 780; // 13 分钟：让"还需 X 分钟"可确定性断言
+
 function json(route: Route, status: number, body: unknown) {
   return route.fulfill({
     status,
@@ -60,10 +66,30 @@ const goal = {
 /**
  * 拦截所有 /api/v1 请求。返回 calls，供断言。
  * 刻意不依赖真实后端：E2E 只验证"视图 + 交互 + 请求形状"。
+ *
+ * `auth: true` 时额外挂一套认证 fixture（auth.spec.ts 用）：
+ * - POST /auth/login  凭据正确 → 200 签发令牌；错误 → 401；连续 5 次失败 → 429 + retry_after；
+ * - POST /auth/refresh 有存活会话 → 200 轮换签发；无会话 → 401（模拟 Cookie 失效）；
+ * - POST /auth/logout 200 并清空全部会话；
+ * - 其余数据端点要求请求头带有效 Bearer 令牌，否则 401（模拟未登录/会话过期）。
+ * 这样"401 → 静默续期 → 重放成功"与"401 → 跳登录"两条前端路径都能被驱动。
  */
-export async function mockApi(page: Page): Promise<{ calls: Call[] }> {
+export async function mockApi(
+  page: Page,
+  options: { auth?: boolean } = {},
+): Promise<{ calls: Call[] }> {
   const calls: Call[] = [];
   const intakeItems: Record<string, unknown>[] = [];
+
+  // --- 认证 fixture 状态（模拟服务端会话）---
+  const authState = options.auth
+    ? { tokenSeq: 0, validTokens: new Set<string>(), loginFailures: 0 }
+    : null;
+  const issueToken = (): string => {
+    authState!.tokenSeq += 1;
+    return `tok-${authState!.tokenSeq}`;
+  };
+  const TOKEN_TTL = 900;
 
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -72,6 +98,77 @@ export async function mockApi(page: Page): Promise<{ calls: Call[] }> {
     const method = request.method();
     const body = request.postDataJSON?.() ?? null;
     calls.push({ method, path, body });
+
+    if (authState) {
+      if (method === "POST" && path === "/auth/login") {
+        const { subject, password } = (body ?? {}) as { subject?: string; password?: string };
+        // 与后端语义一致：进入登录先查锁定（失败计数 >= 5 即 429），失败才计数。
+        // 即前 5 次失败都是 401，第 6 次尝试（哪怕密码正确）才是 429。
+        if (authState.loginFailures >= LOGIN_FAILURE_LIMIT) {
+          return json(route, 429, {
+            error: {
+              code: "rate_limited",
+              message: "登录失败次数过多，请稍后再试",
+              request_id: "req-login-429",
+              details: { retry_after: RETRY_AFTER_SECONDS },
+            },
+          });
+        }
+        if (subject === TEST_SUBJECT && password === TEST_PASSWORD) {
+          const token = issueToken();
+          authState.validTokens.clear();
+          authState.validTokens.add(token);
+          authState.loginFailures = 0;
+          return json(route, 200, {
+            access_token: token,
+            refresh_token: `rt-${token}`,
+            token_type: "bearer",
+            expires_in: TOKEN_TTL,
+            subject: TEST_SUBJECT,
+            role: "owner",
+            scopes: ["auth:manage"],
+          });
+        }
+        authState.loginFailures += 1;
+        return json(route, 401, {
+          error: { code: "unauthorized", message: "主体或密码错误", request_id: "req-login" },
+        });
+      }
+
+      if (method === "POST" && path === "/auth/refresh") {
+        // 空 body + Cookie：mock 无法读 HttpOnly Cookie，用"会话是否存活"等价模拟
+        if (authState.validTokens.size === 0) {
+          return json(route, 401, {
+            error: { code: "unauthorized", message: "刷新令牌无效或已过期", request_id: "req-refresh" },
+          });
+        }
+        const rotated = issueToken();
+        authState.validTokens.clear();
+        authState.validTokens.add(rotated);
+        return json(route, 200, {
+          access_token: rotated,
+          refresh_token: `rt-${rotated}`,
+          token_type: "bearer",
+          expires_in: TOKEN_TTL,
+          subject: TEST_SUBJECT,
+          role: "owner",
+          scopes: ["auth:manage"],
+        });
+      }
+
+      if (method === "POST" && path === "/auth/logout") {
+        authState.validTokens.clear();
+        return json(route, 200, { revoked: 1 });
+      }
+
+      // 数据端点：无有效 Bearer 令牌一律 401（前端据此走静默续期或跳登录）
+      const bearer = (request.headers()["authorization"] ?? "").replace(/^Bearer /, "");
+      if (!authState.validTokens.has(bearer)) {
+        return json(route, 401, {
+          error: { code: "unauthorized", message: "未认证或凭据已过期", request_id: "req-data-401" },
+        });
+      }
+    }
 
     if (method === "GET" && path === "/approvals/queue") {
       return json(route, 200, {
