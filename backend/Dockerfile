@@ -16,6 +16,9 @@ RUN python -m pip install --upgrade pip && python -m pip install .
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY app ./app
+# 首启运维脚本（create_user / audit_scopes）随镜像分发；
+# 放在 app 之后：脚本变动不频繁，避免一次改动让 app 层缓存整体失效。
+COPY scripts ./scripts
 
 RUN useradd --create-home --uid 10001 afc \
     && chown -R afc:afc /app

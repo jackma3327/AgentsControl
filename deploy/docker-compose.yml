@@ -70,6 +70,8 @@ services:
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+      # 首启时 api 必须等迁移完成，否则前几分钟所有请求都会撞上缺表
+      migrate: { condition: service_completed_successfully }
     expose: ["8000"]
     read_only: true
     tmpfs: ["/tmp"]
@@ -81,7 +83,9 @@ services:
       context: ../web
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?前端 API 地址必填}
+        # 同源相对路径：浏览器打 <host>/api/v1/*，由 Caddy 反代到 api:8000。
+        # NEXT_PUBLIC_* 是构建期常量，改值后必须 --build 重建 web。
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -95,7 +99,12 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    ports: ["80:80", "443:443"]
+    ports:
+      # 域名入口（Caddy 自动 HTTPS）
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      # 本地/排障入口：仅绑定回环，HTTP 直连，不经过证书；README 的 localhost:8080 用它
+      - "127.0.0.1:${LOCAL_HTTP_PORT:-8080}:8080"
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN 必填}
       API_DOMAIN: ${API_DOMAIN:?API_DOMAIN 必填}

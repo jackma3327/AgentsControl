@@ -7,7 +7,9 @@
 # 生产必须把 {$APP_DOMAIN} / {$API_DOMAIN} 换成已备案域名；
 # 域名未备案/未解析前，Caddy 会自动改用本地自签证书（internal），
 # 所以本地 `docker compose up` 也能跑通 HTTPS 流程。
-
+#
+# 本地访问统一走 http://localhost:8080（下方 :8080 站点，仅绑定回环地址），
+# 免得为自签证书在本机装信任链。
 {
 	# 只记错误，访问日志交给应用层的结构化日志，避免双写
 	log {
@@ -18,7 +20,8 @@
 	}
 }
 
-{$APP_DOMAIN:app.pcxx.dev} {
+# 域名站点与本地排障入口共用同一套路由，避免两处漂移
+(app_routes) {
 	encode zstd gzip
 
 	header {
@@ -28,7 +31,8 @@
 		-Server
 	}
 
-	# 前端同源调用 API：走 /api/*，避免小程序/浏览器跨域
+	# 前端同源调用 API：/api/v1/* 原样转给 api。
+	# 后端 API_PREFIX 本身就是 /api/v1，这里不再加前缀（否则双前缀）。
 	handle /api/* {
 		reverse_proxy api:8000
 	}
@@ -40,6 +44,10 @@
 	handle {
 		reverse_proxy web:3000
 	}
+}
+
+{$APP_DOMAIN:app.pcxx.dev} {
+	import app_routes
 }
 
 {$API_DOMAIN:api.pcxx.dev} {
@@ -57,4 +65,9 @@
 		health_interval 30s
 		health_timeout 3s
 	}
+}
+
+# 本地/排障入口：不参与自动 HTTPS；compose 只把它映射到 127.0.0.1
+:8080 {
+	import app_routes
 }

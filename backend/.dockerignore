@@ -1,0 +1,16 @@
+# 构建上下文瘦身：只保留运行镜像需要的东西。
+# 注意：scripts/ 与 migrations/ 必须进镜像（首启建用户、迁移），不要在此排除。
+.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+tests/
+.env
+.env.*
+!.env.example
+.git/
+.gitignore
