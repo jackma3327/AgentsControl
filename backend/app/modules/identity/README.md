@@ -8,12 +8,19 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/auth/login` | 登录（subject + password；失败限流 5 次/15 分钟） |
-| POST | `/auth/refresh` | 刷新令牌：每次轮换，旧令牌立即失效；重放即吊销整条会话链 |
-| POST | `/auth/logout` | 登出：吊销当前会话链的刷新令牌 |
+| POST | `/auth/login` | 登录（subject + password；失败限流 5 次/15 分钟）；成功写 HttpOnly Cookie |
+| POST | `/auth/refresh` | 刷新令牌：每次轮换，旧令牌立即失效；重放即吊销整条会话链；**优先读 Cookie，回退 body** |
+| POST | `/auth/logout` | 登出：吊销当前会话链的刷新令牌，清除 Cookie |
 | POST | `/auth/revoke-all` | 吊销全部会话（全端下线；需 `auth:manage` scope） |
 | GET | `/auth/me` | 当前主体（subject / role / scopes） |
 | GET | `/auth/scopes` | scope 白名单自省（角色 → scope 完整映射） |
+
+## refresh_token Cookie（S1-01，契约见 `cookies.py`）
+
+- 名字 `refresh_token`；`Path=/api/v1/auth`（只在 auth 路径生效）；`HttpOnly`；`SameSite=Lax`；
+  `Secure` 仅 `APP_ENV=prod`；`Max-Age` = refresh TTL；
+- `/auth/refresh` 优先读 Cookie，回退 body——body 渠道保留给小程序 / 设备（`RefreshRequest.refresh_token` 为可选字段）；
+- 429 限流响应带 `details.retry_after`（秒）与 `Retry-After` 头（S1-02）；登录锁定消息不再写死"15 分钟"。
 
 ## 关键约定（详见 docs/adr/0002-auth-model.md）
 

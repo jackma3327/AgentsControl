@@ -11,7 +11,13 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=1, max_length=4096)
+    """刷新入参。refresh_token 改为可选（S1-01 / 契约 C2）：
+
+    浏览器场景优先读 HttpOnly Cookie，body 传参保留给小程序 / 设备等
+    无法依赖 Cookie 的调用方——两个渠道都必须继续可用，不得删除字段。
+    """
+
+    refresh_token: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class TokenPairResponse(BaseModel):

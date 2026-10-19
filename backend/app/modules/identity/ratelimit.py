@@ -24,6 +24,8 @@ class RateLimiter(Protocol):
 
     async def incr(self, key: str, window_seconds: int) -> int: ...
 
+    async def ttl(self, key: str) -> int: ...
+
     async def reset(self, key: str) -> None: ...
 
 
@@ -43,6 +45,19 @@ class RedisRateLimiter:
             return await incr_with_ttl(_PREFIX + key, window_seconds)
         except Exception:  # noqa: BLE001
             logger.warning("rate limiter degraded (incr)", extra={"key": key})
+            return 0
+
+    async def ttl(self, key: str) -> int:
+        """剩余秒数（S1-02）：让 429 响应能告诉客户端还要等多久。
+
+        key 不存在（-2）或无过期时间（-1）一律返回 0，由调用方回退到窗口长度；
+        Redis 故障同样降级为 0——限流是加固项，不为它把登录打挂。
+        """
+        try:
+            value = await get_redis().ttl(_PREFIX + key)
+            return value if value > 0 else 0
+        except Exception:  # noqa: BLE001
+            logger.warning("rate limiter degraded (ttl)", extra={"key": key})
             return 0
 
     async def reset(self, key: str) -> None:

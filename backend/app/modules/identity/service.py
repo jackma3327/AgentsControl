@@ -68,15 +68,30 @@ class AuthService:
         self._repo = repo
         self._limiter = limiter
 
+    async def _retry_after(self, key: str, window_seconds: int) -> int:
+        """锁定剩余秒数（S1-02）：读 Redis TTL，缺失/故障时回退窗口长度。
+
+        用于 429 响应的 `details.retry_after` 与 `Retry-After` 头，
+        让前端能显示"还需 X 分钟"而不是写死的"15 分钟后再试"。
+        """
+        remaining = await self._limiter.ttl(key)
+        return remaining if remaining > 0 else window_seconds
+
     # ------------------------------------------------------------- 登录
 
     async def login(self, *, subject: str, password: str, ip: str | None = None) -> TokenPair:
         key = f"login:fail:subject:{subject}"
         if await self._limiter.count(key) >= LOGIN_FAILURE_LIMIT:
-            raise RateLimitedError("登录失败次数过多，请 15 分钟后再试")
+            raise RateLimitedError(
+                "登录失败次数过多，请稍后再试",
+                details={"retry_after": await self._retry_after(key, LOGIN_FAILURE_WINDOW_SECONDS)},
+            )
         ip_key = f"login:fail:ip:{ip}" if ip else None
         if ip_key and await self._limiter.count(ip_key) >= LOGIN_IP_FAILURE_LIMIT:
-            raise RateLimitedError("该来源登录失败次数过多，请 15 分钟后再试")
+            raise RateLimitedError(
+                "该来源登录失败次数过多，请稍后再试",
+                details={"retry_after": await self._retry_after(ip_key, LOGIN_FAILURE_WINDOW_SECONDS)},
+            )
 
         user = await self._repo.get_user(subject)
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
@@ -100,7 +115,12 @@ class AuthService:
 
     # ------------------------------------------------------------- 刷新（轮换）
 
-    async def refresh(self, *, refresh_token: str, ip: str | None = None) -> TokenPair:
+    async def refresh(self, *, refresh_token: str | None, ip: str | None = None) -> TokenPair:
+        # Cookie 与 body 两个渠道在 router 层归一后传入；都没有时明确 401，
+        # 而不是让空串流到 decode_token 产出含义模糊的错误（S1-01 / 契约 C2）。
+        if not refresh_token:
+            raise UnauthorizedError("缺少刷新令牌（Cookie 与请求体均为空）")
+
         try:
             decode_token(refresh_token, expect="refresh")
         except TokenError as exc:

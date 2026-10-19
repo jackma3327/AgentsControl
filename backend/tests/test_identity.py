@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from math import ceil
 from typing import Any
 
 import pytest
@@ -22,11 +23,13 @@ from app.core.deps import Principal, require_scope
 from app.core.errors import ForbiddenError
 from app.core.security import create_token
 from app.main import create_app
+from app.modules.identity.cookies import REFRESH_COOKIE_PATH
 from app.modules.identity.rbac import ROLE_SCOPES, scopes_for_role
 from app.modules.identity.repository import RefreshTokenRecord, UserRecord, hash_refresh_token
 from app.modules.identity.router import get_auth_service, get_rate_limiter
 from app.modules.identity.service import (
     LOGIN_FAILURE_LIMIT,
+    LOGIN_FAILURE_WINDOW_SECONDS,
     AuthService,
     hash_password,
     verify_password,
@@ -135,6 +138,13 @@ class FakeLimiter:
         self.counts[key] = (n, datetime.now(UTC) + timedelta(seconds=window_seconds))
         return n
 
+    async def ttl(self, key: str) -> int:
+        entry = self.counts.get(key)
+        if entry is None:
+            return 0
+        _n, expires_at = entry
+        return max(0, ceil((expires_at - datetime.now(UTC)).total_seconds()))
+
     async def reset(self, key: str) -> None:
         self.counts.pop(key, None)
 
@@ -166,6 +176,26 @@ def _login(h: Harness, subject: str = OWNER, password: str = PASSWORD) -> dict[s
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _body_channel(h: Harness) -> None:
+    """清掉 TestClient cookie jar 里的 refresh_token，让后续请求只走 body 渠道。
+
+    S1-01 起 /auth/refresh 优先读 Cookie；jar 会按 Path 匹配自动带上登录时写入的
+    Cookie，body 渠道的兼容用例必须显式清 jar，否则测的不是自己想测的渠道。
+    """
+    h.client.cookies.delete("refresh_token", path=REFRESH_COOKIE_PATH)
+
+
+def _set_cookie(h: Harness, token: str) -> None:
+    """往 jar 里放一条 refresh_token（等价于浏览器持有登录 Cookie）。"""
+    h.client.cookies.set("refresh_token", token, path=REFRESH_COOKIE_PATH)
+
+
+def _set_cookie_header(r: Any) -> str:
+    """从响应头里挑出 refresh_token 那条 Set-Cookie。"""
+    cookies = r.headers.get_list("set-cookie")
+    return next(c for c in cookies if c.startswith("refresh_token="))
 
 
 # ------------------------------------------------------------ 密码原语
@@ -234,6 +264,7 @@ def test_login_success_resets_failure_counter(h: Harness) -> None:
 
 def test_refresh_rotates_old_token_becomes_invalid(h: Harness) -> None:
     first = _login(h)
+    _body_channel(h)
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
     assert r.status_code == 200, r.text
     second = r.json()
@@ -242,37 +273,44 @@ def test_refresh_rotates_old_token_becomes_invalid(h: Harness) -> None:
     # 同一条会话链
     assert h.repo.session_of(second["refresh_token"]) == h.repo.session_of(first["refresh_token"])
 
-    # 旧 refresh token 立即失效
+    # 旧 refresh token 立即失效（body 渠道，jar 已清）
+    _body_channel(h)
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
     assert r.status_code == 401
 
 
 def test_refresh_replay_revokes_entire_chain(h: Harness) -> None:
     first = _login(h)
+    _body_channel(h)
     second = h.client.post(
         "/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}
     ).json()
     # 重放已轮换的旧令牌 → 401，且整条链（含最新令牌）被吊销
+    _body_channel(h)
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
     assert r.status_code == 401
     assert "重放" in r.json()["error"]["message"]
 
+    _body_channel(h)
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": second["refresh_token"]})
     assert r.status_code == 401
 
 
 def test_expired_refresh_token_rejected(h: Harness) -> None:
     body = _login(h)
+    _body_channel(h)
     expired = create_token(OWNER, "refresh", ttl_seconds=-10, extra={"sid": "whatever"})
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": expired})
     assert r.status_code == 401
     # 正常令牌不受影响
+    _body_channel(h)
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
     assert r.status_code == 200
 
 
 def test_refresh_unknown_token_rejected(h: Harness) -> None:
     _login(h)  # 让系统有至少一条会话
+    _body_channel(h)
     forged = create_token(OWNER, "refresh", extra={"sid": "fake"})  # 签名合法但未入库
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": forged})
     assert r.status_code == 401
@@ -280,8 +318,95 @@ def test_refresh_unknown_token_rejected(h: Harness) -> None:
 
 def test_refresh_access_token_rejected(h: Harness) -> None:
     body = _login(h)
+    _body_channel(h)
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["access_token"]})
     assert r.status_code == 401
+
+
+# ------------------------------------------------------------ Cookie 渠道（S1-01 / 契约 C1-C2）
+
+
+def test_login_sets_refresh_cookie(h: Harness) -> None:
+    r = h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": PASSWORD})
+    assert r.status_code == 200
+    cookie = _set_cookie_header(r)
+    assert "HttpOnly" in cookie
+    assert "Path=/api/v1/auth" in cookie  # 只在 auth 路径生效，别的接口收不到
+    assert "SameSite=lax" in cookie
+    assert "Secure" not in cookie  # 本地 http：带 Secure 会被浏览器丢弃，登录不了
+    assert f"Max-Age={settings.refresh_token_ttl_seconds}" in cookie
+
+
+def test_login_cookie_secure_in_prod(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "app_env", "prod")
+    r = h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": PASSWORD})
+    assert r.status_code == 200
+    assert "Secure" in _set_cookie_header(r)
+
+
+def test_refresh_reads_cookie_with_empty_body(h: Harness) -> None:
+    """浏览器形状：只带 Cookie、空 body → 200，且轮换后 Cookie 同步换新。"""
+    first = _login(h)
+    _set_cookie(h, first["refresh_token"])
+    r = h.client.post("/api/v1/auth/refresh")
+    assert r.status_code == 200, r.text
+    second = r.json()
+    assert second["access_token"] != first["access_token"]
+    assert second["refresh_token"] != first["refresh_token"]
+    assert second["refresh_token"] in _set_cookie_header(r)
+
+
+def test_refresh_falls_back_to_body_without_cookie(h: Harness) -> None:
+    """兼容渠道：无 Cookie 时 body 传参仍然 200（小程序 / 设备场景）。"""
+    first = _login(h)
+    _body_channel(h)
+    r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["access_token"] != first["access_token"]
+
+
+def test_refresh_without_cookie_or_body_rejected(h: Harness) -> None:
+    _login(h)
+    _body_channel(h)  # 模拟没有 Cookie 的全新隐身窗口
+    r = h.client.post("/api/v1/auth/refresh")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "unauthorized"
+
+
+def test_logout_clears_cookie_and_kills_refresh(h: Harness) -> None:
+    body = _login(h)
+    r = h.client.post("/api/v1/auth/logout", headers=_auth(body["access_token"]))
+    assert r.status_code == 200
+    cookie = _set_cookie_header(r)
+    assert "Max-Age=0" in cookie  # 浏览器侧立即失效
+
+    # 登出后的旧 Cookie 再刷新 → 401 unauthorized
+    _set_cookie(h, body["refresh_token"])
+    r = h.client.post("/api/v1/auth/refresh")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "unauthorized"
+
+
+def test_revoke_all_clears_cookie(h: Harness) -> None:
+    body = _login(h)
+    r = h.client.post("/api/v1/auth/revoke-all", headers=_auth(body["access_token"]))
+    assert r.status_code == 200
+    assert "Max-Age=0" in _set_cookie_header(r)
+
+
+# ------------------------------------------------------------ 限流剩余时间（S1-02 / 契约 C3）
+
+
+def test_login_lockout_returns_retry_after(h: Harness) -> None:
+    for _ in range(LOGIN_FAILURE_LIMIT):
+        h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": "bad"})
+    r = h.client.post("/api/v1/auth/login", json={"subject": OWNER, "password": PASSWORD})
+    assert r.status_code == 429
+    error = r.json()["error"]
+    assert error["code"] == "rate_limited"
+    retry_after = error["details"]["retry_after"]
+    assert 0 < retry_after <= LOGIN_FAILURE_WINDOW_SECONDS
+    assert r.headers["Retry-After"] == str(retry_after)
 
 
 # ------------------------------------------------------------ 白名单
@@ -304,7 +429,8 @@ def test_logout_revokes_session_chain(h: Harness) -> None:
     assert r.status_code == 200
     assert r.json()["revoked"] == 1
 
-    # 刷新令牌已死
+    # 刷新令牌已死（body 渠道复放）
+    _body_channel(h)
     r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
     assert r.status_code == 401
 
@@ -379,7 +505,8 @@ def test_revoke_all_kills_every_session(h: Harness) -> None:
     assert r.status_code == 200
     assert r.json()["revoked"] == 2
 
-    # 所有会话的刷新令牌全部死亡
+    # 所有会话的刷新令牌全部死亡（body 渠道复放）
+    _body_channel(h)
     for body in (s1, s2):
         r = h.client.post("/api/v1/auth/refresh", json={"refresh_token": body["refresh_token"]})
         assert r.status_code == 401
