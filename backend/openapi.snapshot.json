@@ -18,6 +18,30 @@
       "200"
     ]
   },
+  "GET /api/v1/approvals/bandwidth": {
+    "has_body": false,
+    "operation_id": "approval_bandwidth_api_v1_approvals_bandwidth_get",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/approvals/queue": {
+    "has_body": false,
+    "operation_id": "list_approval_queue_api_v1_approvals_queue_get",
+    "params": [
+      "header:authorization",
+      "query:levels",
+      "query:limit"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/auth/me": {
     "has_body": false,
     "operation_id": "me_api_v1_auth_me_get",
@@ -59,9 +83,54 @@
       "200"
     ]
   },
-  "GET /api/v1/evals/_ping": {
+  "GET /api/v1/evals/_status": {
     "has_body": false,
-    "operation_id": "module_ping_api_v1_evals__ping_get",
+    "operation_id": "module_status_api_v1_evals__status_get",
+    "params": [],
+    "responses": [
+      "200"
+    ]
+  },
+  "GET /api/v1/evals/cards": {
+    "has_body": false,
+    "operation_id": "list_cards_api_v1_evals_cards_get",
+    "params": [
+      "header:authorization",
+      "query:status"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/ceiling": {
+    "has_body": false,
+    "operation_id": "get_ceiling_api_v1_evals_ceiling_get",
+    "params": [
+      "header:authorization",
+      "query:week"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/drift": {
+    "has_body": false,
+    "operation_id": "list_drift_api_v1_evals_drift_get",
+    "params": [
+      "header:authorization",
+      "query:status",
+      "query:week"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/harness": {
+    "has_body": false,
+    "operation_id": "list_harness_api_v1_evals_harness_get",
     "params": [
       "header:authorization"
     ],
@@ -70,12 +139,77 @@
       "422"
     ]
   },
-  "GET /api/v1/evals/_status": {
+  "GET /api/v1/evals/radar": {
     "has_body": false,
-    "operation_id": "module_status_api_v1_evals__status_get",
-    "params": [],
+    "operation_id": "get_radar_api_v1_evals_radar_get",
+    "params": [
+      "header:authorization",
+      "query:models",
+      "query:week"
+    ],
     "responses": [
-      "200"
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/runs": {
+    "has_body": false,
+    "operation_id": "list_runs_api_v1_evals_runs_get",
+    "params": [
+      "header:authorization",
+      "query:limit"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/runs/{run_id}": {
+    "has_body": false,
+    "operation_id": "get_run_api_v1_evals_runs__run_id__get",
+    "params": [
+      "header:authorization",
+      "path:run_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/runs/{run_id}/results": {
+    "has_body": false,
+    "operation_id": "list_results_api_v1_evals_runs__run_id__results_get",
+    "params": [
+      "header:authorization",
+      "path:run_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/skills": {
+    "has_body": false,
+    "operation_id": "list_skills_api_v1_evals_skills_get",
+    "params": [
+      "header:authorization",
+      "query:status"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/evals/tasks": {
+    "has_body": false,
+    "operation_id": "list_tasks_api_v1_evals_tasks_get",
+    "params": [
+      "header:authorization",
+      "query:active_only"
+    ],
+    "responses": [
+      "200",
+      "422"
     ]
   },
   "GET /api/v1/execution/_ping": {
@@ -244,6 +378,95 @@
       "200"
     ]
   },
+  "GET /api/v1/ledger/attention": {
+    "has_body": false,
+    "operation_id": "ledger_attention_api_v1_ledger_attention_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/budget-status": {
+    "has_body": false,
+    "operation_id": "ledger_budget_status_api_v1_ledger_budget_status_get",
+    "params": [
+      "header:authorization",
+      "query:goal_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/entries": {
+    "has_body": false,
+    "operation_id": "list_ledger_entries_api_v1_ledger_entries_get",
+    "params": [
+      "header:authorization",
+      "query:category",
+      "query:goal_id",
+      "query:limit",
+      "query:period",
+      "query:task_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/export.csv": {
+    "has_body": false,
+    "operation_id": "export_ledger_csv_api_v1_ledger_export_csv_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/reconcile": {
+    "has_body": false,
+    "operation_id": "reconcile_ledger_api_v1_ledger_reconcile_get",
+    "params": [
+      "header:authorization",
+      "query:dry_run",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/subscriptions": {
+    "has_body": false,
+    "operation_id": "list_subscriptions_api_v1_ledger_subscriptions_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/ledger/summary": {
+    "has_body": false,
+    "operation_id": "ledger_summary_api_v1_ledger_summary_get",
+    "params": [
+      "header:authorization",
+      "query:period"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/tasks/_ping": {
     "has_body": false,
     "operation_id": "module_ping_api_v1_tasks__ping_get",
@@ -287,12 +510,71 @@
       "200"
     ]
   },
+  "PATCH /api/v1/evals/drift/{alert_id}": {
+    "has_body": true,
+    "operation_id": "ack_drift_api_v1_evals_drift__alert_id__patch",
+    "params": [
+      "header:authorization",
+      "path:alert_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "PATCH /api/v1/evals/skills/{skill_id}/status": {
+    "has_body": true,
+    "operation_id": "set_skill_status_api_v1_evals_skills__skill_id__status_patch",
+    "params": [
+      "header:authorization",
+      "path:skill_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "PATCH /api/v1/goals/{goal_id}": {
     "has_body": true,
     "operation_id": "patch_goal_api_v1_goals__goal_id__patch",
     "params": [
       "header:authorization",
       "path:goal_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "PATCH /api/v1/ledger/subscriptions/{sub_id}": {
+    "has_body": true,
+    "operation_id": "update_subscription_api_v1_ledger_subscriptions__sub_id__patch",
+    "params": [
+      "header:authorization",
+      "path:sub_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/approvals": {
+    "has_body": true,
+    "operation_id": "create_approval_api_v1_approvals_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/approvals/{approval_id}/decide": {
+    "has_body": true,
+    "operation_id": "decide_approval_api_v1_approvals__approval_id__decide_post",
+    "params": [
+      "header:authorization",
+      "path:approval_id"
     ],
     "responses": [
       "200",
@@ -336,6 +618,99 @@
     ],
     "responses": [
       "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/cards": {
+    "has_body": true,
+    "operation_id": "create_card_api_v1_evals_cards_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/cards/{card_id}/reuse": {
+    "has_body": false,
+    "operation_id": "reuse_card_api_v1_evals_cards__card_id__reuse_post",
+    "params": [
+      "header:authorization",
+      "path:card_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/ceiling/check": {
+    "has_body": true,
+    "operation_id": "check_ceiling_api_v1_evals_ceiling_check_post",
+    "params": [
+      "header:authorization",
+      "query:week"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/drift/scan": {
+    "has_body": false,
+    "operation_id": "scan_drift_api_v1_evals_drift_scan_post",
+    "params": [
+      "header:authorization",
+      "query:week"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/harness": {
+    "has_body": true,
+    "operation_id": "create_harness_api_v1_evals_harness_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/runs": {
+    "has_body": true,
+    "operation_id": "create_run_api_v1_evals_runs_post",
+    "params": [
+      "header:authorization",
+      "query:eager",
+      "query:task_ids"
+    ],
+    "responses": [
+      "202",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/skills": {
+    "has_body": true,
+    "operation_id": "create_skill_api_v1_evals_skills_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/evals/tasks": {
+    "has_body": true,
+    "operation_id": "create_task_api_v1_evals_tasks_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
       "422"
     ]
   },
@@ -394,6 +769,28 @@
     ],
     "responses": [
       "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/ledger/entries": {
+    "has_body": true,
+    "operation_id": "create_ledger_entry_api_v1_ledger_entries_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/ledger/subscriptions": {
+    "has_body": true,
+    "operation_id": "create_subscription_api_v1_ledger_subscriptions_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
       "422"
     ]
   }
