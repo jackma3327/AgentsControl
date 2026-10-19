@@ -40,6 +40,9 @@ class FakeIntakeRepo:
     def __init__(self) -> None:
         self._items: list[IntakeItem] = []
         self._committed = True
+        # S2/R04 回归计数：service 写路径必须显式 commit，
+        # 只 flush 不 commit 的 bug 表现为 POST 201 后 GET 看不到。
+        self.commit_calls = 0
 
     def _clone(self, item: IntakeItem) -> IntakeItem:
         copy = IntakeItem(
@@ -154,10 +157,16 @@ class FakeIntakeRepo:
                 it.structure_cost_usd = cost_usd
                 it.structured_at = at
                 it.status = "structured"
+                # 与 SqlIntakeRepository 对齐：save_structure 内部提交
+                self.commit_calls += 1
                 return self._clone(it)
         from app.core.errors import NotFoundError
 
         raise NotFoundError("intake item 不存在")
+
+    async def commit(self) -> None:
+        """记录一次显式提交（S2/R04 回归断言用）。"""
+        self.commit_calls += 1
 
     async def mark_promoted(
         self, item_id: str, *, goal_id: str, at: datetime
@@ -754,6 +763,137 @@ def test_structure_endpoint_returns_502_when_upstream_down(
     assert r.json()["error"]["code"] == "upstream_error"
     # 错误响应不带任何 acceptance 字段（即不必编造）
     assert "three_questions" not in r.json().get("error", {}).get("details", {} or {})
+
+
+# ---------------------------------------------------------------------------
+# S2/R04 · 写路径显式 commit 回归（评审 Issue 2：返回 201 但数据静默丢失）
+# ---------------------------------------------------------------------------
+
+
+def test_capture_service_commits_transaction(fake_repo: FakeIntakeRepo) -> None:
+    """service.capture 末尾必须显式 commit。
+
+    回归背景：`get_db()` 语义是"业务层不 commit"，create_or_merge 只 flush，
+    请求结束即丢失——表现为 POST 201 后 GET 为空。这里断言提交确实发生。
+    """
+
+    async def run() -> None:
+        payload = IntakeItemCreate(text="落库回归")
+        await svc.capture(fake_repo, OWNER, payload)
+        assert fake_repo.commit_calls == 1
+
+    asyncio.run(run())
+
+
+def test_capture_endpoint_post_then_get_visible(
+    client: TestClient, fake_repo: FakeIntakeRepo
+) -> None:
+    """POST 201 → GET 立刻可见，且 service 确实提交了事务。"""
+    r = client.post("/api/v1/intake/items", json={"text": "刷新后还在"}, headers=AUTH)
+    assert r.status_code == 201
+    created_id = r.json()["id"]
+
+    r2 = client.get("/api/v1/intake/items", headers=AUTH)
+    assert r2.status_code == 200
+    assert any(it["id"] == created_id for it in r2.json()["items"])
+    assert fake_repo.commit_calls >= 1
+
+
+def test_structure_service_commits_transaction(fake_repo: FakeIntakeRepo) -> None:
+    """三问结构化结果必须落库：service 层提交（不依赖 repository 内部行为）。"""
+    from app.modules.intake.litellm import HttpLitellmClient
+
+    litellm = HttpLitellmClient(
+        base_url="https://litellm.test/v1",
+        api_key="k",
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {"message": {"content": '{"acceptance":"a","horizon":"b","budget":"c"}'}}
+                    ]
+                },
+            )
+        ),
+    )
+
+    async def run() -> None:
+        payload = IntakeItemCreate(text="三问落库")
+        item, _ = await svc.capture(fake_repo, OWNER, payload)
+        before = fake_repo.commit_calls
+        await svc.structure(fake_repo, litellm, OWNER, item.id)
+        assert fake_repo.commit_calls > before
+
+    asyncio.run(run())
+
+
+def test_structure_endpoint_post_then_get_visible(fake_repo: FakeIntakeRepo) -> None:
+    """端到端：POST structure → GET item / GET questions 都能读到结构化结果。"""
+    app = create_app()
+    app.dependency_overrides[get_intake_repository] = lambda: fake_repo
+    from app.modules.intake.litellm import HttpLitellmClient
+
+    app.dependency_overrides[get_litellm_client] = lambda: HttpLitellmClient(
+        base_url="https://litellm.test/v1",
+        api_key="k",
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": '{"acceptance":"验收X","horizon":"14 天","budget":"¥100"}'
+                            }
+                        }
+                    ]
+                },
+            )
+        ),
+    )
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/v1/intake/items", json={"text": "端到端"}, headers=AUTH
+    ).json()
+    r = client.post(
+        f"/api/v1/intake/items/{created['id']}/structure", json={}, headers=AUTH
+    )
+    assert r.status_code == 200
+
+    got = client.get(f"/api/v1/intake/items/{created['id']}", headers=AUTH)
+    assert got.status_code == 200
+    assert got.json()["status"] == "structured"
+    assert got.json()["structured"]["acceptance"] == "验收X"
+
+    q = client.get(f"/api/v1/intake/items/{created['id']}/questions", headers=AUTH)
+    assert q.status_code == 200
+    assert q.json()["structured"]["horizon"] == "14 天"
+
+
+def test_structure_unconfigured_litellm_returns_502_upstream_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S2-03 核对：未配置 LITELLM_BASE_URL 时三问返回稳定 502 upstream_error。
+
+    交付给 S4 的契约：三问未配置 → `upstream_error`（502），前端据此映射
+    "AI 服务未配置，请设置 LITELLM_BASE_URL"，而不是裸 500 或误导文案。
+    """
+    from app.core.config import settings
+    from app.core.errors import UpstreamError
+    from app.modules.intake.litellm import HttpLitellmClient
+
+    monkeypatch.setattr(settings, "litellm_base_url", "")
+
+    async def run() -> None:
+        client = HttpLitellmClient(api_key="")
+        with pytest.raises(UpstreamError) as exc_info:
+            await client.structure("任意文本")
+        assert exc_info.value.status_code == 502
+        assert exc_info.value.code == "upstream_error"
+
+    asyncio.run(run())
 
 
 # ---------------------------------------------------------------------------

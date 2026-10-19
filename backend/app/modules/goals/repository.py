@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +46,15 @@ class GoalRepository(Protocol):
 
     # Intake 标记（W02-I03 与 W02-I05 共用）
     async def mark_intake_promoted(self, intake_item_id: str, goal_id: str, at: datetime) -> None:
+        ...
+
+    async def commit(self) -> None:
+        """提交当前事务。service 写路径末尾显式调用（S2/R04）。
+
+        背景：`core/db.py#get_db()` 语义是"业务层不 commit"，goals 的
+        create/update 只 flush，导致 POST 201 / PATCH 200 后数据静默丢失。
+        提交权归 service 层；repository 的写方法仍只负责 flush。
+        """
         ...
 
 
@@ -132,9 +141,28 @@ class SqlGoalRepository:
         )
         await self._s.execute(stmt)
 
+    async def commit(self) -> None:
+        await self._s.commit()
+
 
 def new_id() -> str:
     return uuid.uuid4().hex
+
+
+def _normalize_json_object(value: Any) -> dict[str, Any] | None:
+    """把库里的 JSON 列归一成 GoalOut 契约的 dict[str, Any] | None。
+
+    背景（CODE-REVIEW P1-1）：历史数据里混进过数组形态的 guardrails /
+    deliverables（评审时手工插库 + 模板 D 曾经把 guardrails 写成 set 笔误），
+    GoalOut 声明是 dict，一条脏数据会让整个列表 500。这里在出口归一：
+    数组 → {"items": [...]}，标量 → {"value": ...}，None / dict 原样。
+    契约不变，前端无感；写路径不做兼容（脏数据不应再产生）。
+    """
+    if value is None or isinstance(value, dict):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        return {"items": list(value)}
+    return {"value": value}
 
 
 def to_out(goal: Goal):
@@ -154,8 +182,8 @@ def to_out(goal: Goal):
         budget_hours=float(goal.budget_hours) if goal.budget_hours is not None else None,
         attention_minutes_per_day=goal.attention_minutes_per_day,
         north_star=goal.north_star,
-        guardrails=goal.guardrails,
-        deliverables=goal.deliverables,
+        guardrails=_normalize_json_object(goal.guardrails),
+        deliverables=_normalize_json_object(goal.deliverables),
         status=goal.status,  # type: ignore[arg-type]
         intake_item_id=goal.intake_item_id,
         created_at=goal.created_at,

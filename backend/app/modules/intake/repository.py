@@ -88,6 +88,15 @@ class IntakeRepository(Protocol):
     ) -> None:
         ...
 
+    async def commit(self) -> None:
+        """提交当前事务。service 写路径末尾显式调用（S2/R04）。
+
+        背景：`core/db.py#get_db()` 语义是"业务层不 commit"，intake 的
+        `create_or_merge` 只 flush，导致 POST 201 后数据随会话关闭丢失。
+        提交权归 service 层；repository 的写方法仍只负责 flush。
+        """
+        ...
+
 
 class SqlIntakeRepository:
     """生产实现。所有写入由调用方在事务里 commit。"""
@@ -265,6 +274,9 @@ class SqlIntakeRepository:
             .values(status="promoted", promoted_goal_id=goal_id)
         )
         await self._s.execute(stmt)
+        await self._s.commit()
+
+    async def commit(self) -> None:
         await self._s.commit()
 
 

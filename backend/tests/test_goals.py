@@ -22,7 +22,7 @@ from app.core.security import create_token
 from app.main import create_app
 from app.modules.goals import service as gsvc
 from app.modules.goals.models import Goal
-from app.modules.goals.repository import new_id
+from app.modules.goals.repository import new_id, to_out
 from app.modules.goals.router import get_goals_repository
 from app.modules.goals.rules import (
     assert_transition,
@@ -47,6 +47,9 @@ class FakeGoalRepo:
     def __init__(self) -> None:
         self._goals: list[Goal] = []
         self._budget_used: dict[str, float] = {}
+        # S2/R04 回归计数：service 写路径必须显式 commit，
+        # 只 flush 不 commit 的 bug 表现为 POST 201 / PATCH 200 后数据丢失。
+        self.commit_calls = 0
 
     def _clone(self, g: Goal) -> Goal:
         copy = Goal(
@@ -140,6 +143,10 @@ class FakeGoalRepo:
 
     async def mark_intake_promoted(self, intake_item_id: str, goal_id: str, at: datetime) -> None:
         return None
+
+    async def commit(self) -> None:
+        """记录一次显式提交（S2/R04 回归断言用）。"""
+        self.commit_calls += 1
 
 
 @pytest.fixture
@@ -695,3 +702,192 @@ def test_interests_endpoint_lists_archived_items(
     r = c.get("/api/v1/intake/interests", headers=AUTH)
     assert r.status_code == 200
     assert r.json() == []
+
+
+# ---------------------------------------------------------------------------
+# S2/R04 · 写路径显式 commit 回归（评审 Issue 2：返回 201 但数据静默丢失）
+# ---------------------------------------------------------------------------
+
+
+def test_create_goal_commits_transaction(client: TestClient, fake_repo: FakeGoalRepo) -> None:
+    """POST /goals/ 201 后必须可见，且 service 确实提交了事务。
+
+    回归背景：create_goal 只 flush 不 commit，请求结束即丢失——
+    POST 201 但 GET /goals/ 为空、psql 0 行。
+    """
+    r = client.post(
+        "/api/v1/goals/",
+        json={"track": "money", "title": "落库回归", "acceptance": "可见"},
+        headers=AUTH,
+    )
+    assert r.status_code == 201
+    created_id = r.json()["id"]
+    assert fake_repo.commit_calls == 1
+
+    r2 = client.get("/api/v1/goals/?limit=100", headers=AUTH)
+    assert r2.status_code == 200
+    assert any(g["id"] == created_id for g in r2.json())
+
+
+def test_patch_goal_commits_transaction(client: TestClient, fake_repo: FakeGoalRepo) -> None:
+    """PATCH（含状态迁移）后必须提交，否则 200 但状态不落库。"""
+    created = client.post(
+        "/api/v1/goals/",
+        json={"track": "money", "title": "补丁回归", "acceptance": "a"},
+        headers=AUTH,
+    ).json()
+    before = fake_repo.commit_calls
+
+    r = client.patch(
+        f"/api/v1/goals/{created['id']}", json={"status": "active"}, headers=AUTH
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "active"
+    assert fake_repo.commit_calls == before + 1
+
+    got = client.get(f"/api/v1/goals/{created['id']}", headers=AUTH)
+    assert got.json()["status"] == "active"
+
+
+def test_patch_goal_illegal_transition_does_not_commit(
+    client: TestClient, fake_repo: FakeGoalRepo
+) -> None:
+    """非法迁移在写库前就被状态机拒绝：不应产生任何提交。"""
+    created = client.post(
+        "/api/v1/goals/",
+        json={"track": "money", "title": "非法回归", "acceptance": "a"},
+        headers=AUTH,
+    ).json()
+    before = fake_repo.commit_calls
+    r = client.patch(
+        f"/api/v1/goals/{created['id']}", json={"status": "achieved"}, headers=AUTH
+    )
+    assert r.status_code == 409
+    assert fake_repo.commit_calls == before
+
+
+def test_degrade_commits_transaction(client: TestClient, fake_repo: FakeGoalRepo) -> None:
+    """POST /goals/{id}/degrade 的降级写入必须提交。"""
+    created = client.post(
+        "/api/v1/goals/",
+        json={"track": "growth", "title": "降级回归", "acceptance": "a"},
+        headers=AUTH,
+    ).json()
+    client.patch(f"/api/v1/goals/{created['id']}", json={"status": "active"}, headers=AUTH)
+    before = fake_repo.commit_calls
+
+    r = client.post(f"/api/v1/goals/{created['id']}/degrade", headers=AUTH)
+    assert r.status_code == 200
+    assert r.json()["status"] == "degraded"
+    assert fake_repo.commit_calls == before + 1
+
+    got = client.get(f"/api/v1/goals/{created['id']}", headers=AUTH)
+    assert got.json()["status"] == "degraded"
+    assert got.json()["degraded_at"] is not None
+
+
+def test_check_stop_loss_commits_only_when_triggered(fake_repo: FakeGoalRepo) -> None:
+    """止损触发时才写 stop_loss_triggered_at；未触发不写不提交。"""
+    old = datetime.utcnow() - timedelta(days=8)
+    triggered_goal = Goal(
+        id=new_id(),
+        code="O-E-20261010-001",
+        owner_subject=OWNER,
+        track="growth",
+        template="D",
+        title="老目标",
+        acceptance="一张卡",
+        status="active",
+        created_at=old,
+        updated_at=old,
+    )
+    fresh_goal = Goal(
+        id=new_id(),
+        code="O-E-20261010-002",
+        owner_subject=OWNER,
+        track="growth",
+        template="D",
+        title="新目标",
+        acceptance="一张卡",
+        status="active",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    fake_repo._goals.extend([triggered_goal, fresh_goal])
+
+    async def run() -> None:
+        r1 = await gsvc.check_stop_loss(fake_repo, OWNER, triggered_goal.id)
+        assert r1.triggered is True
+        assert fake_repo.commit_calls == 1
+        # 落库值可读回
+        saved = await fake_repo.get(triggered_goal.id, owner=OWNER)
+        assert saved.stop_loss_triggered_at is not None
+
+        r2 = await gsvc.check_stop_loss(fake_repo, OWNER, fresh_goal.id)
+        assert r2.triggered is False
+        assert fake_repo.commit_calls == 1, "未触发不应产生提交"
+
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# to_out 归一化（CODE-REVIEW P1-1 / issue #37：脏数据不打 500）
+# ---------------------------------------------------------------------------
+
+
+def _goal(**overrides) -> Goal:
+    base = dict(
+        id=new_id(),
+        code="O-M-20261019-001",
+        owner_subject=OWNER,
+        track="money",
+        template="",
+        title="测试目标",
+        acceptance="可验收",
+        status="draft",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    base.update(overrides)
+    return Goal(**base)
+
+
+def test_to_out_wraps_legacy_array_json_columns() -> None:
+    """历史库里 guardrails/deliverables 是数组时归一成 {"items": [...]}。
+
+    GoalOut 契约是 dict[str, Any] | None；修复前一条脏数据让
+    GET /goals/ 整个列表 500（CODE-REVIEW P1-1）。
+    """
+    goal = _goal(guardrails=["不碰灰产渠道"], deliverables=["20 篇内容"])
+    out = to_out(goal)
+    assert out.guardrails == {"items": ["不碰灰产渠道"]}
+    assert out.deliverables == {"items": ["20 篇内容"]}
+
+
+def test_to_out_keeps_dict_and_none() -> None:
+    """dict 原样、None 原样——正常数据零变化。"""
+    goal = _goal(guardrails={"违规": 0}, deliverables=None)
+    out = to_out(goal)
+    assert out.guardrails == {"违规": 0}
+    assert out.deliverables is None
+
+
+def test_to_out_wraps_scalar_json_columns() -> None:
+    """标量脏数据也不炸（包成 {"value": ...}）。"""
+    goal = _goal(guardrails="写坏了", deliverables=42)
+    out = to_out(goal)
+    assert out.guardrails == {"value": "写坏了"}
+    assert out.deliverables == {"value": 42}
+
+
+def test_templates_json_columns_are_dicts() -> None:
+    """全量模板的 guardrails/deliverables 必须是 dict。
+
+    模板 D 曾把 guardrails 写成 set 笔误（{"每周 ≤2 本", "无卡不算完成"}），
+    流出后客户端回传即产生数组脏数据——这里防回归。
+    """
+    for t in list_templates():
+        if t["status"] != "available":
+            continue
+        assert isinstance(t["guardrails"], dict), f"模板 {t['id']} guardrails 不是 dict"
+        assert isinstance(t["deliverables"], dict), f"模板 {t['id']} deliverables 不是 dict"

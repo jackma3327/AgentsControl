@@ -54,7 +54,7 @@ _TEMPLATES: dict[str, dict] = {
         "track": "growth",
         "name": "阅读与观影",
         "north_star": "可复用认知资产数量",
-        "guardrails": {"每周 ≤2 本", "无卡不算完成"},
+        "guardrails": {"每周 ≤2 本": True, "无卡不算完成": True},
         "deliverables": {
             "模板": "触发条件 / 判断规则 / 反例 / 置信度"
         },

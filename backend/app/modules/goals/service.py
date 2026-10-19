@@ -62,6 +62,8 @@ async def create_goal(
         seq2 = await repo.next_seq_for(payload.track, now)
         goal.code = build_code(payload.track, now, seq2)
         saved = await repo.create(goal)
+    # 显式提交（S2/R04）：get_db() 不替业务层 commit，只 flush 会静默丢失
+    await repo.commit()
     return to_out(saved)
 
 
@@ -115,6 +117,8 @@ async def patch_goal(
 
     if updates:
         saved = await repo.update(goal_id, updates, at=now)
+        # 显式提交（S2/R04）：冻结/降级等状态迁移此前只 flush，PATCH 200 后丢失
+        await repo.commit()
     else:
         saved = goal
     return to_out(saved)
@@ -145,6 +149,7 @@ async def transition(
     elif target == "degraded":
         updates["degraded_at"] = now
     saved = await repo.update(goal_id, {"status": target, **updates}, at=now)
+    await repo.commit()
     return to_out(saved)
 
 
@@ -193,6 +198,7 @@ async def check_stop_loss(
 
     if triggered and goal.stop_loss_triggered_at is None:
         await repo.update(goal_id, {"stop_loss_triggered_at": now}, at=now)
+        await repo.commit()
 
     return StopLossResult(goal_id=goal.id, triggered=triggered, reason=reason)
 
@@ -213,6 +219,7 @@ async def degrade(
         {"status": "degraded", "degraded_at": now},
         at=now,
     )
+    await repo.commit()
     return to_out(saved)
 
 

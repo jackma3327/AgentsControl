@@ -55,8 +55,12 @@ async def capture(
     """记录一条体感。返回 (out, created)。
 
     created=False 表示 5 分钟内同文本已存在，返回既有 id（不报错）。
+
+    事务：写路径末尾显式 commit（S2/R04）。`get_db()` 不会替业务层提交，
+    只 flush 的写入会随请求结束静默丢失（返回 201 但查不到）。
     """
     item, created = await repo.create_or_merge(owner, payload, dedup_window=DEDUP_WINDOW)
+    await repo.commit()
     return to_out(item), created
 
 
@@ -138,6 +142,9 @@ async def structure(
         cost_usd=cost_usd,
         at=now,
     )
+    # Sql 实现的 save_structure 内部已 commit；service 层再显式提交一次，
+    # 保证"提交权在 service"的契约不依赖 repository 的内部行为（S2/R04）。
+    await repo.commit()
     return StructureResult(
         item_id=saved.id,
         structured=ThreeQuestions(**_to_plain(saved.structured)),
