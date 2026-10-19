@@ -20,7 +20,7 @@ test("收件箱：自动聚焦、Cmd/Ctrl+Enter 提交、三问、转目标", as
 
   await page.getByRole("button", { name: "三问" }).click();
   await expect(page.getByText("做完之后，什么变了？")).toBeVisible();
-  await expect(page.getByText(/下一次合并只需跑一条命令/)).toBeVisible();
+  await expect(page.getByText(/下一次合并只需跑一条命令/).first()).toBeVisible();
 
   await page.getByRole("button", { name: /转成目标卡/ }).click();
   await expect

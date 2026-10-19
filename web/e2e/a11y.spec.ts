@@ -8,13 +8,16 @@ async function textContrast(page: Page): Promise<number> {
     const el = document.querySelector("main p") ?? document.body;
     const fg = getComputedStyle(el).color;
     const bg = getComputedStyle(document.body).backgroundColor;
-    const parse = (value: string): number[] => (value.match(/[0-9.]+/g) ?? []).slice(0, 3).map(Number);
-    const luminance = ([r, g, b]: number[]): number => {
+    const parse = (value: string): [number, number, number] => {
+      const [r = 0, g = 0, b = 0] = (value.match(/[0-9.]+/g) ?? []).slice(0, 3).map(Number);
+      return [r, g, b];
+    };
+    const luminance = (rgb: [number, number, number]): number => {
       const channel = (c: number) => {
         const v = c / 255;
         return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
       };
-      return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+      return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
     };
     const l1 = luminance(parse(fg));
     const l2 = luminance(parse(bg));
