@@ -16,21 +16,21 @@ export interface NavItem {
   group: NavGroup;
   /** 规划归属的窗口（用于文档一致性检查，不参与运行时逻辑） */
   owner: string;
-  /** 骨架期是否为占位页 */
+  /** 是否仍是占位页（false = 已实现；2026-10-19 逐页核对后全为 false） */
   stub: boolean;
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { href: "/today", label: "今日", question: "今天有什么事非我不可？", group: "指挥", owner: "W10", stub: true },
-  { href: "/inbox", label: "收件箱", question: "我刚想到什么来着？", group: "指挥", owner: "W10", stub: true },
-  { href: "/goals", label: "目标", question: "这些事值不值得继续？", group: "指挥", owner: "W10", stub: true },
-  { href: "/execution", label: "执行", question: "活干到哪了，卡在哪？", group: "执行", owner: "W10", stub: true },
-  { href: "/team", label: "团队", question: "谁在干，谁该走？", group: "执行", owner: "W10", stub: true },
-  { href: "/arsenal", label: "兵工厂", question: "现在能用什么，贵不贵？", group: "资产", owner: "W10", stub: true },
-  { href: "/assets", label: "资产", question: "我变强了吗？", group: "资产", owner: "W10", stub: true },
-  { href: "/ledger", label: "账本", question: "值不值？", group: "资产", owner: "W10", stub: true },
-  { href: "/overview", label: "总视图", question: "所有项目现在什么状态？", group: "视图", owner: "W10", stub: true },
-  { href: "/projects", label: "项目视图", question: "谁和谁撞车了？", group: "视图", owner: "W10", stub: true },
+  { href: "/today", label: "今日", question: "今天有什么事非我不可？", group: "指挥", owner: "W10", stub: false },
+  { href: "/inbox", label: "收件箱", question: "我刚想到什么来着？", group: "指挥", owner: "W10", stub: false },
+  { href: "/goals", label: "目标", question: "这些事值不值得继续？", group: "指挥", owner: "W10", stub: false },
+  { href: "/execution", label: "执行", question: "活干到哪了，卡在哪？", group: "执行", owner: "W10", stub: false },
+  { href: "/team", label: "团队", question: "谁在干，谁该走？", group: "执行", owner: "W10", stub: false },
+  { href: "/arsenal", label: "兵工厂", question: "现在能用什么，贵不贵？", group: "资产", owner: "W10", stub: false },
+  { href: "/assets", label: "资产", question: "我变强了吗？", group: "资产", owner: "W10", stub: false },
+  { href: "/ledger", label: "账本", question: "值不值？", group: "资产", owner: "W10", stub: false },
+  { href: "/overview", label: "总视图", question: "所有项目现在什么状态？", group: "视图", owner: "W10", stub: false },
+  { href: "/projects", label: "项目视图", question: "谁和谁撞车了？", group: "视图", owner: "W10", stub: false },
 ] as const;
 
 export const NAV_GROUPS: readonly NavGroup[] = ["指挥", "执行", "资产", "视图"];
