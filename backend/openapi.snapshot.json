@@ -1,4 +1,17 @@
 {
+  "DELETE /api/v1/execution/sessions/{session_id}": {
+    "has_body": false,
+    "operation_id": "recycle_session_api_v1_execution_sessions__session_id__delete",
+    "params": [
+      "header:authorization",
+      "path:session_id",
+      "query:force"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/approvals/_ping": {
     "has_body": false,
     "operation_id": "module_ping_api_v1_approvals__ping_get",
@@ -64,6 +77,20 @@
       "422"
     ]
   },
+  "GET /api/v1/devices/": {
+    "has_body": false,
+    "operation_id": "list_devices_api_v1_devices__get",
+    "params": [
+      "header:authorization",
+      "query:limit",
+      "query:offset",
+      "query:status"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "GET /api/v1/devices/_ping": {
     "has_body": false,
     "operation_id": "module_ping_api_v1_devices__ping_get",
@@ -81,6 +108,60 @@
     "params": [],
     "responses": [
       "200"
+    ]
+  },
+  "GET /api/v1/devices/{node_id}/commands": {
+    "has_body": false,
+    "operation_id": "pull_commands_api_v1_devices__node_id__commands_get",
+    "params": [
+      "header:x-afc-node",
+      "header:x-afc-signature",
+      "header:x-afc-timestamp",
+      "path:node_id",
+      "query:wait"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/devices/{node_id}/events": {
+    "has_body": false,
+    "operation_id": "list_events_api_v1_devices__node_id__events_get",
+    "params": [
+      "header:authorization",
+      "path:node_id",
+      "query:limit",
+      "query:since"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/devices/{node_id}/snapshots": {
+    "has_body": false,
+    "operation_id": "list_snapshots_api_v1_devices__node_id__snapshots_get",
+    "params": [
+      "header:authorization",
+      "path:node_id",
+      "query:limit"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/devices/{node_id}/status": {
+    "has_body": false,
+    "operation_id": "device_status_api_v1_devices__node_id__status_get",
+    "params": [
+      "header:authorization",
+      "path:node_id"
+    ],
+    "responses": [
+      "200",
+      "422"
     ]
   },
   "GET /api/v1/evals/_status": {
@@ -229,6 +310,47 @@
     "params": [],
     "responses": [
       "200"
+    ]
+  },
+  "GET /api/v1/execution/orca/health": {
+    "has_body": false,
+    "operation_id": "orca_health_api_v1_execution_orca_health_get",
+    "params": [
+      "header:authorization",
+      "query:force"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/execution/sessions": {
+    "has_body": false,
+    "operation_id": "list_sessions_api_v1_execution_sessions_get",
+    "params": [
+      "header:authorization",
+      "query:device_id",
+      "query:limit",
+      "query:objective_id",
+      "query:offset",
+      "query:runtime",
+      "query:state"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "GET /api/v1/execution/sessions/{session_id}": {
+    "has_body": false,
+    "operation_id": "get_session_api_v1_execution_sessions__session_id__get",
+    "params": [
+      "header:authorization",
+      "path:session_id"
+    ],
+    "responses": [
+      "200",
+      "422"
     ]
   },
   "GET /api/v1/github/_status": {
@@ -619,6 +741,18 @@
       "200"
     ]
   },
+  "PATCH /api/v1/devices/{node_id}": {
+    "has_body": true,
+    "operation_id": "patch_device_api_v1_devices__node_id__patch",
+    "params": [
+      "header:authorization",
+      "path:node_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "PATCH /api/v1/evals/drift/{alert_id}": {
     "has_body": true,
     "operation_id": "ack_drift_api_v1_evals_drift__alert_id__patch",
@@ -730,6 +864,103 @@
       "422"
     ]
   },
+  "POST /api/v1/devices/bootstrap-codes": {
+    "has_body": false,
+    "operation_id": "issue_bootstrap_code_api_v1_devices_bootstrap_codes_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/devices/commands/{command_id}/ack": {
+    "has_body": true,
+    "operation_id": "ack_command_api_v1_devices_commands__command_id__ack_post",
+    "params": [
+      "header:x-afc-node",
+      "header:x-afc-signature",
+      "header:x-afc-timestamp",
+      "path:command_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/devices/events": {
+    "has_body": true,
+    "operation_id": "ingest_events_api_v1_devices_events_post",
+    "params": [
+      "header:x-afc-node",
+      "header:x-afc-signature",
+      "header:x-afc-timestamp"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/devices/heartbeat": {
+    "has_body": true,
+    "operation_id": "heartbeat_api_v1_devices_heartbeat_post",
+    "params": [
+      "header:x-afc-node",
+      "header:x-afc-signature",
+      "header:x-afc-timestamp"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/devices/register": {
+    "has_body": true,
+    "operation_id": "register_device_api_v1_devices_register_post",
+    "params": [],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/devices/snapshot": {
+    "has_body": true,
+    "operation_id": "ingest_snapshot_api_v1_devices_snapshot_post",
+    "params": [
+      "header:x-afc-node",
+      "header:x-afc-signature",
+      "header:x-afc-timestamp"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/devices/{node_id}/commands": {
+    "has_body": true,
+    "operation_id": "create_command_api_v1_devices__node_id__commands_post",
+    "params": [
+      "header:authorization",
+      "path:node_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/devices/{node_id}/revoke": {
+    "has_body": false,
+    "operation_id": "revoke_device_api_v1_devices__node_id__revoke_post",
+    "params": [
+      "header:authorization",
+      "path:node_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
   "POST /api/v1/evals/cards": {
     "has_body": true,
     "operation_id": "create_card_api_v1_evals_cards_post",
@@ -820,6 +1051,125 @@
     ],
     "responses": [
       "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/sessions": {
+    "has_body": true,
+    "operation_id": "create_session_api_v1_execution_sessions_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "201",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/sessions/{session_id}/harvest": {
+    "has_body": false,
+    "operation_id": "harvest_session_api_v1_execution_sessions__session_id__harvest_post",
+    "params": [
+      "header:authorization",
+      "path:session_id"
+    ],
+    "responses": [
+      "202",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/sessions/{session_id}/kill": {
+    "has_body": true,
+    "operation_id": "kill_session_api_v1_execution_sessions__session_id__kill_post",
+    "params": [
+      "header:authorization",
+      "path:session_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/sessions/{session_id}/send": {
+    "has_body": true,
+    "operation_id": "send_to_session_api_v1_execution_sessions__session_id__send_post",
+    "params": [
+      "header:authorization",
+      "path:session_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/sessions/{session_id}/spawn": {
+    "has_body": true,
+    "operation_id": "spawn_session_api_v1_execution_sessions__session_id__spawn_post",
+    "params": [
+      "header:authorization",
+      "path:session_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/sessions/{session_id}/steer": {
+    "has_body": true,
+    "operation_id": "steer_session_api_v1_execution_sessions__session_id__steer_post",
+    "params": [
+      "header:authorization",
+      "path:session_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/workers/claim": {
+    "has_body": true,
+    "operation_id": "workers_claim_api_v1_execution_workers_claim_post",
+    "params": [
+      "header:authorization"
+    ],
+    "responses": [
+      "200",
+      "204",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/workers/{worker_id}/complete": {
+    "has_body": true,
+    "operation_id": "workers_complete_api_v1_execution_workers__worker_id__complete_post",
+    "params": [
+      "header:authorization",
+      "path:worker_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/workers/{worker_id}/fail": {
+    "has_body": true,
+    "operation_id": "workers_fail_api_v1_execution_workers__worker_id__fail_post",
+    "params": [
+      "header:authorization",
+      "path:worker_id"
+    ],
+    "responses": [
+      "200",
+      "422"
+    ]
+  },
+  "POST /api/v1/execution/workers/{worker_id}/heartbeat": {
+    "has_body": true,
+    "operation_id": "workers_heartbeat_api_v1_execution_workers__worker_id__heartbeat_post",
+    "params": [
+      "header:authorization",
+      "path:worker_id"
+    ],
+    "responses": [
+      "200",
       "422"
     ]
   },

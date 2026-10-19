@@ -171,6 +171,12 @@ windows:
     allow:
       - backend/app/modules/devices/
       - backend/tests/test_devices.py
+      # 迁移文件不在任何窗口的 allow 内，按 x-shared-registry 精确登记本窗口的四个文件
+      # （不放宽到整个 versions/ 目录；其余窗口迁移仍归各自申请）
+      - backend/migrations/versions/w04_01_devices.py
+      - backend/migrations/versions/w04_02_events.py
+      - backend/migrations/versions/w04_03_snapshots.py
+      - backend/migrations/versions/w04_04_commands.py
     frozen_readonly:
       - agent/internal/protocol/types.go
     issues:
